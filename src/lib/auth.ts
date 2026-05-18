@@ -6,7 +6,6 @@ export interface AppUser {
   id: string
   username: string
   email: string
-  password: string
   role: UserRole
   credits: number
   multiplier: number
@@ -17,6 +16,7 @@ export interface AppUser {
 export interface CreditRecord {
   id: string
   userId: string
+  username?: string
   type: 'recharge' | 'refund'
   amount: number
   operatorUsername: string
@@ -26,6 +26,7 @@ export interface CreditRecord {
 export interface UsageRecord {
   id: string
   userId: string
+  username?: string
   taskId: string
   prompt: string
   quality: TaskParams['quality']
@@ -36,164 +37,207 @@ export interface UsageRecord {
   createdAt: number
 }
 
-export const DEFAULT_ADMIN: AppUser = {
-  id: 'admin',
-  username: 'admin',
-  email: 'admin@example.com',
-  password: 'admin123456',
-  role: 'admin',
-  credits: 9999,
-  multiplier: 1,
-  disabled: false,
-  createdAt: 0,
+export interface SystemSettings {
+  auth: {
+    registrationOpen: boolean
+    defaultCredits: number
+    defaultMultiplier: number
+  }
+  storage: {
+    provider: 'local' | 's3'
+    s3Enabled: boolean
+    s3?: {
+      bucket?: string
+      region?: string
+      endpoint?: string
+    }
+  }
+  imageApi: {
+    provider: 'openai-compatible'
+    baseUrl: string
+    apiKey?: string
+    model: string
+    apiMode: 'images' | 'responses'
+    timeoutSeconds: number
+  }
 }
 
-const USERS_STORAGE_KEY = 'hua-image-playground.users'
-const LEGACY_USERS_STORAGE_KEY = 'gpt-image-playground.demo-users'
-const CREDIT_RECORDS_STORAGE_KEY = 'hua-image-playground.credit-records'
-const USAGE_RECORDS_STORAGE_KEY = 'hua-image-playground.usage-records'
+export interface PublicSettings {
+  auth: {
+    registrationOpen: boolean
+  }
+  storage: {
+    provider: 'local' | 's3'
+    s3Enabled: boolean
+  }
+}
+
 export const AUTH_SESSION_STORAGE_KEY = 'hua-image-playground.auth-session'
 
-function genId(prefix: string) {
-  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+interface AuthSession {
+  token: string
+  user: AppUser
 }
 
-function readJson<T>(key: string, fallback: T): T {
+export function readAuthSession(): AuthSession | null {
   try {
-    const value = window.localStorage.getItem(key)
-    return value ? JSON.parse(value) as T : fallback
+    const saved = window.localStorage.getItem(AUTH_SESSION_STORAGE_KEY)
+    return saved ? JSON.parse(saved) as AuthSession : null
   } catch {
-    return fallback
+    return null
   }
 }
 
-function writeJson<T>(key: string, value: T) {
-  window.localStorage.setItem(key, JSON.stringify(value))
-  window.dispatchEvent(new CustomEvent('hua-auth-storage'))
+export function writeAuthSession(session: AuthSession) {
+  window.localStorage.setItem(AUTH_SESSION_STORAGE_KEY, JSON.stringify(session))
 }
 
-function normalizeUser(input: Partial<AppUser> | null | undefined): AppUser | null {
-  if (!input || typeof input.username !== 'string' || typeof input.email !== 'string' || typeof input.password !== 'string') return null
-  return {
-    id: typeof input.id === 'string' && input.id ? input.id : genId('user'),
-    username: input.username,
-    email: input.email,
-    password: input.password,
-    role: input.role === 'admin' ? 'admin' : 'user',
-    credits: typeof input.credits === 'number' && Number.isFinite(input.credits) ? input.credits : 0,
-    multiplier: typeof input.multiplier === 'number' && Number.isFinite(input.multiplier) ? input.multiplier : 1,
-    disabled: Boolean(input.disabled),
-    createdAt: typeof input.createdAt === 'number' ? input.createdAt : Date.now(),
+export function clearAuthSession() {
+  window.localStorage.removeItem(AUTH_SESSION_STORAGE_KEY)
+}
+
+export function getAuthToken(): string | null {
+  return readAuthSession()?.token ?? null
+}
+
+async function requestApi<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const token = getAuthToken()
+  const response = await fetch(path, {
+    ...init,
+    headers: {
+      ...(init.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...init.headers,
+    },
+  })
+  if (!response.ok) {
+    let message = `HTTP ${response.status}`
+    try {
+      const payload = await response.json()
+      message = payload.error?.message ?? payload.message ?? message
+    } catch {
+      /* ignore */
+    }
+    throw new Error(message)
+  }
+  return response.json() as Promise<T>
+}
+
+export async function authenticateUser(identifier: string, password: string): Promise<{ user: AppUser | null; error: string | null }> {
+  try {
+    const result = await requestApi<AuthSession>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ identifier, password }),
+    })
+    writeAuthSession(result)
+    return { user: result.user, error: null }
+  } catch (error) {
+    return { user: null, error: error instanceof Error ? error.message : '登录失败' }
   }
 }
 
-function readLegacyUsers(): AppUser[] {
-  const legacy = readJson<Array<{ username: string; email: string; password: string }>>(LEGACY_USERS_STORAGE_KEY, [])
-  return legacy
-    .filter((item) => item.username !== DEFAULT_ADMIN.username && item.email !== DEFAULT_ADMIN.email)
-    .map((item) => normalizeUser({
-      ...item,
-      role: 'user',
-      credits: 20,
-      multiplier: 1,
-      disabled: false,
-      createdAt: Date.now(),
-    }))
-    .filter((item): item is AppUser => Boolean(item))
+export async function registerUser(input: { username: string; email: string; password: string }): Promise<{ user: AppUser | null; error: string | null }> {
+  try {
+    const result = await requestApi<AuthSession>('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })
+    writeAuthSession(result)
+    return { user: result.user, error: null }
+  } catch (error) {
+    return { user: null, error: error instanceof Error ? error.message : '注册失败' }
+  }
 }
 
-export function readUsers(): AppUser[] {
-  const saved = readJson<Partial<AppUser>[]>(USERS_STORAGE_KEY, [])
-  const users = saved.map(normalizeUser).filter((item): item is AppUser => Boolean(item))
-  const merged = [DEFAULT_ADMIN, ...readLegacyUsers(), ...users]
-  const seen = new Set<string>()
-  return merged.filter((user) => {
-    const key = `${user.username.toLowerCase()}|${user.email.toLowerCase()}`
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
+export async function readPublicSettings(): Promise<PublicSettings> {
+  return await requestApi<PublicSettings>('/api/settings/public')
+}
+
+export async function fetchCurrentUser(): Promise<AppUser | null> {
+  if (!getAuthToken()) return null
+  try {
+    const result = await requestApi<{ user: AppUser }>('/api/auth/me')
+    writeAuthSession({ token: getAuthToken()!, user: result.user })
+    return result.user
+  } catch {
+    clearAuthSession()
+    return null
+  }
+}
+
+export async function changePassword(oldPassword: string, newPassword: string): Promise<void> {
+  await requestApi('/api/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify({ oldPassword, newPassword }),
   })
 }
 
-export function writeUsers(users: AppUser[]) {
-  const normalized = users.map(normalizeUser).filter((item): item is AppUser => Boolean(item))
-  writeJson(USERS_STORAGE_KEY, normalized.filter((user) => user.id !== DEFAULT_ADMIN.id))
+export async function listUsers(): Promise<AppUser[]> {
+  const result = await requestApi<{ items: AppUser[] }>('/api/admin/users?pageSize=100')
+  return result.items
 }
 
-export function findUserById(id: string | null | undefined): AppUser | null {
-  if (!id) return null
-  return readUsers().find((user) => user.id === id) ?? null
-}
-
-export function authenticateUser(identifier: string, password: string): { user: AppUser | null; error: string | null } {
-  const value = identifier.trim().toLowerCase()
-  const user = readUsers().find((item) =>
-    item.password === password &&
-    (item.username.toLowerCase() === value || item.email.toLowerCase() === value),
-  ) ?? null
-  if (!user) return { user: null, error: '账号或密码不正确' }
-  if (user.disabled) return { user: null, error: '该账号已被禁用' }
-  return { user, error: null }
-}
-
-export function createUser(input: Pick<AppUser, 'username' | 'email' | 'password' | 'role' | 'credits' | 'multiplier'>): { user: AppUser | null; error: string | null } {
-  const users = readUsers()
-  const exists = users.some((user) =>
-    user.username.toLowerCase() === input.username.trim().toLowerCase() ||
-    user.email.toLowerCase() === input.email.trim().toLowerCase(),
-  )
-  if (exists) return { user: null, error: '用户名或邮箱已存在' }
-  const user: AppUser = {
-    id: genId('user'),
-    username: input.username.trim(),
-    email: input.email.trim(),
-    password: input.password,
-    role: input.role,
-    credits: Math.max(0, input.credits),
-    multiplier: Math.max(0, input.multiplier),
-    disabled: false,
-    createdAt: Date.now(),
+export async function createUser(input: Pick<AppUser, 'username' | 'email' | 'role'> & { password: string; credits?: number; multiplier?: number }): Promise<{ user: AppUser | null; error: string | null }> {
+  try {
+    const result = await requestApi<{ user: AppUser }>('/api/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })
+    return { user: result.user, error: null }
+  } catch (error) {
+    return { user: null, error: error instanceof Error ? error.message : '创建失败' }
   }
-  writeUsers([...users, user])
-  return { user, error: null }
 }
 
-export function updateUser(userId: string, patch: Partial<AppUser>): AppUser | null {
-  const users = readUsers()
-  const nextUsers = users.map((user) => user.id === userId ? { ...user, ...patch, id: user.id } : user)
-  writeUsers(nextUsers)
-  return nextUsers.find((user) => user.id === userId) ?? null
+export async function updateUser(userId: string, patch: Partial<Pick<AppUser, 'role' | 'disabled' | 'multiplier'>>): Promise<AppUser | null> {
+  const result = await requestApi<{ user: AppUser }>(`/api/admin/users/${userId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  })
+  return result.user
 }
 
-export function deleteUser(userId: string) {
-  if (userId === DEFAULT_ADMIN.id) return
-  writeUsers(readUsers().filter((user) => user.id !== userId))
+export async function deleteUser(userId: string) {
+  await requestApi(`/api/admin/users/${userId}`, { method: 'DELETE' })
 }
 
-export function readCreditRecords(): CreditRecord[] {
-  return readJson<CreditRecord[]>(CREDIT_RECORDS_STORAGE_KEY, []).filter((record) => record && typeof record.userId === 'string')
+export async function adjustUserCredits(userId: string, amount: number, type: CreditRecord['type']) {
+  const result = await requestApi<{ user: AppUser }>(`/api/admin/users/${userId}/credits`, {
+    method: 'POST',
+    body: JSON.stringify({ amount, type }),
+  })
+  return result.user
 }
 
-export function readUsageRecords(): UsageRecord[] {
-  return readJson<UsageRecord[]>(USAGE_RECORDS_STORAGE_KEY, []).filter((record) => record && typeof record.userId === 'string')
+export async function readCreditRecords(): Promise<CreditRecord[]> {
+  const result = await requestApi<{ items: CreditRecord[] }>('/api/admin/credit-records?pageSize=100')
+  return result.items
 }
 
-export function adjustUserCredits(userId: string, amount: number, type: CreditRecord['type'], operatorUsername: string) {
-  const user = findUserById(userId)
-  if (!user) return null
-  const signedAmount = type === 'refund' ? -Math.abs(amount) : Math.abs(amount)
-  const nextCredits = Math.max(0, user.credits + signedAmount)
-  const nextUser = updateUser(userId, { credits: nextCredits })
-  const records = readCreditRecords()
-  writeJson(CREDIT_RECORDS_STORAGE_KEY, [{
-    id: genId(type),
-    userId,
-    type,
-    amount: Math.abs(amount),
-    operatorUsername,
-    createdAt: Date.now(),
-  }, ...records])
-  return nextUser
+export async function readUsageRecords(admin = false): Promise<UsageRecord[]> {
+  const result = await requestApi<{ items: UsageRecord[] }>(admin ? '/api/admin/usage-records?pageSize=100' : '/api/me/usage-records?pageSize=100')
+  return result.items
+}
+
+export async function readSystemSettings(): Promise<SystemSettings> {
+  const result = await requestApi<{ settings: SystemSettings }>('/api/admin/settings')
+  return result.settings
+}
+
+export async function updateAuthSettings(input: SystemSettings['auth']): Promise<SystemSettings> {
+  const result = await requestApi<{ settings: SystemSettings }>('/api/admin/settings/auth', {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  })
+  return result.settings
+}
+
+export async function updateImageApiSettings(input: SystemSettings['imageApi']): Promise<SystemSettings> {
+  const result = await requestApi<{ settings: SystemSettings }>('/api/admin/settings/image-api', {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  })
+  return result.settings
 }
 
 export function getQualityBaseCredits(quality: TaskParams['quality']): number {
@@ -205,26 +249,4 @@ export function getQualityBaseCredits(quality: TaskParams['quality']): number {
 export function calculateTaskCredits(params: TaskParams, multiplier: number, imageCount = params.n) {
   const baseCredits = getQualityBaseCredits(params.quality)
   return Number((baseCredits * Math.max(1, imageCount) * multiplier).toFixed(2))
-}
-
-export function recordTaskUsage(userId: string, taskId: string, prompt: string, params: TaskParams, imageCount: number): UsageRecord | null {
-  const user = findUserById(userId)
-  if (!user) return null
-  const baseCredits = getQualityBaseCredits(params.quality)
-  const totalCredits = calculateTaskCredits(params, user.multiplier, imageCount)
-  updateUser(userId, { credits: Math.max(0, Number((user.credits - totalCredits).toFixed(2))) })
-  const record: UsageRecord = {
-    id: genId('usage'),
-    userId,
-    taskId,
-    prompt,
-    quality: params.quality,
-    imageCount,
-    baseCredits,
-    multiplier: user.multiplier,
-    totalCredits,
-    createdAt: Date.now(),
-  }
-  writeJson(USAGE_RECORDS_STORAGE_KEY, [record, ...readUsageRecords()])
-  return record
 }

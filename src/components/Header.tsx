@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { useStore } from '../store'
 import { useVersionCheck } from '../hooks/useVersionCheck'
 import { useTooltip } from '../hooks/useTooltip'
 import { dismissAllTooltips } from '../lib/tooltipDismiss'
@@ -19,7 +18,6 @@ interface HeaderProps {
 }
 
 export default function Header({ user, onLogout, onOpenConsole, onOpenAccount }: HeaderProps) {
-  const setShowSettings = useStore((s) => s.setShowSettings)
   const { hasUpdate, latestRelease, dismiss } = useVersionCheck()
   const [showHelp, setShowHelp] = useState(false)
 
@@ -141,9 +139,12 @@ export default function Header({ user, onLogout, onOpenConsole, onOpenAccount }:
               {...settingsTooltip.handlers}
             >
               <button
-                onClick={() => setShowSettings(true)}
+                onClick={() => {
+                  dismissAllTooltips()
+                  onOpenConsole?.()
+                }}
                 className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors"
-                aria-label="设置"
+                aria-label="系统设置"
               >
                 <svg
                   className="w-5 h-5 text-gray-600 dark:text-gray-400"
@@ -166,7 +167,7 @@ export default function Header({ user, onLogout, onOpenConsole, onOpenAccount }:
                 </svg>
               </button>
               <ViewportTooltip visible={settingsTooltip.visible} className="whitespace-nowrap">
-                设置
+                系统设置
               </ViewportTooltip>
             </div>}
             {onLogout && (

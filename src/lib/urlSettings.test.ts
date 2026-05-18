@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import {
-  createDefaultFalProfile,
   createDefaultOpenAIProfile,
   DEFAULT_IMAGES_MODEL,
   DEFAULT_SETTINGS,
@@ -64,12 +63,28 @@ describe('URL settings params', () => {
     expect(next.activeProfileId).toBe(existingProfile.id)
   })
 
-  it('creates an OpenAI profile from legacy params even when fal is active', () => {
-    const falProfile = createDefaultFalProfile({ id: 'fal-active', apiKey: 'fal-key' })
+  it('creates an OpenAI profile from legacy params even when a custom provider is active', () => {
+    const customProvider = {
+      id: 'custom-json',
+      name: 'Custom JSON',
+      submit: {
+        path: 'images/generations',
+        method: 'POST' as const,
+        contentType: 'json' as const,
+        body: { model: '$profile.model', prompt: '$prompt' },
+        result: { imageUrlPaths: ['data.*.url'], b64JsonPaths: [] },
+      },
+    }
+    const customProfile = {
+      ...createDefaultOpenAIProfile({ id: 'custom-active', apiKey: 'custom-key' }),
+      provider: customProvider.id,
+      name: 'Custom Active',
+    }
     const current = normalizeSettings({
       ...DEFAULT_SETTINGS,
-      profiles: [falProfile],
-      activeProfileId: falProfile.id,
+      customProviders: [customProvider],
+      profiles: [customProfile],
+      activeProfileId: customProfile.id,
     })
     const next = normalizeSettings({
       ...current,

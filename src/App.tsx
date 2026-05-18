@@ -18,7 +18,7 @@ import SupportPromptModal from './components/SupportPromptModal'
 import AuthPage from './components/AuthPage'
 import ConsolePage from './components/ConsolePage'
 import AccountPage from './components/AccountPage'
-import { AUTH_SESSION_STORAGE_KEY, findUserById } from './lib/auth'
+import { clearAuthSession, fetchCurrentUser, readAuthSession } from './lib/auth'
 import type { AppUser } from './lib/auth'
 
 type AppView = 'app' | 'console' | 'account'
@@ -29,20 +29,9 @@ function readRouteView(): AppView {
   return 'app'
 }
 
-function readAuthSession(): AppUser | null {
-  try {
-    const saved = window.localStorage.getItem(AUTH_SESSION_STORAGE_KEY)
-    if (!saved) return null
-    const parsed = JSON.parse(saved) as { id?: string } | null
-    return findUserById(parsed?.id)
-  } catch {
-    return null
-  }
-}
-
 export default function App() {
   const setSettings = useStore((s) => s.setSettings)
-  const [authSession, setAuthSession] = useState<AppUser | null>(() => readAuthSession())
+  const [authSession, setAuthSession] = useState<AppUser | null>(() => readAuthSession()?.user ?? null)
   const [view, setView] = useState<AppView>(() => readRouteView())
   useDockerApiUrlMigrationNotice()
 
@@ -84,6 +73,10 @@ export default function App() {
     }
   }, [])
 
+  useEffect(() => {
+    void fetchCurrentUser().then((user) => setAuthSession(user))
+  }, [])
+
   const navigateView = (nextView: AppView, replace = false) => {
     const nextHash = nextView === 'app' ? '' : `#/${nextView}`
     const nextUrl = `${window.location.pathname}${window.location.search}${nextHash}`
@@ -96,15 +89,13 @@ export default function App() {
   }
 
   const handleAuthenticated = (user: AppUser) => {
-    const session = { id: user.id, username: user.username, email: user.email, role: user.role }
-    window.localStorage.setItem(AUTH_SESSION_STORAGE_KEY, JSON.stringify(session))
     setAuthSession(user)
     window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`)
     setView('app')
   }
 
   const handleLogout = () => {
-    window.localStorage.removeItem(AUTH_SESSION_STORAGE_KEY)
+    clearAuthSession()
     setAuthSession(null)
     window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`)
     setView('app')

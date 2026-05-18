@@ -1,21 +1,44 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   adjustUserCredits,
   createUser,
   deleteUser,
   readCreditRecords,
+  readSystemSettings,
   readUsageRecords,
-  readUsers,
+  listUsers,
+  updateAuthSettings,
+  updateImageApiSettings,
   updateUser,
 } from '../lib/auth'
-import type { AppUser, UserRole } from '../lib/auth'
+import type { AppUser, CreditRecord, SystemSettings, UsageRecord, UserRole } from '../lib/auth'
 
 interface ConsolePageProps {
   currentUser: AppUser
   onClose: () => void
 }
 
-type ConsoleTab = 'users' | 'credits' | 'usage'
+type ConsoleTab = 'users' | 'credits' | 'usage' | 'settings'
+
+const EMPTY_SETTINGS_DRAFT = {
+  registrationOpen: true,
+  defaultCredits: '',
+  defaultMultiplier: '',
+  baseUrl: '',
+  apiKey: '',
+  model: '',
+  apiMode: 'images' as SystemSettings['imageApi']['apiMode'],
+  timeoutSeconds: '',
+}
+
+const EMPTY_CREATE_USER_FORM = {
+  username: '',
+  email: '',
+  password: '',
+  role: 'user' as UserRole,
+  credits: '',
+  multiplier: '',
+}
 
 function formatTime(value: number) {
   return new Date(value).toLocaleString()
@@ -31,6 +54,14 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 }
 
 function NavIcon({ type }: { type: ConsoleTab }) {
+  if (type === 'settings') {
+    return (
+      <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+        <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.73l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.73v-.51a2 2 0 0 1 1-1.72l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z" />
+        <circle cx="12" cy="12" r="3" />
+      </svg>
+    )
+  }
   if (type === 'credits') {
     return (
       <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
@@ -64,20 +95,15 @@ function EmptyState({ text }: { text: string }) {
 
 export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) {
   const [tab, setTab] = useState<ConsoleTab>('users')
-  const [users, setUsers] = useState(readUsers)
-  const [creditRecords, setCreditRecords] = useState(readCreditRecords)
-  const [usageRecords, setUsageRecords] = useState(readUsageRecords)
+  const [users, setUsers] = useState<AppUser[]>([])
+  const [creditRecords, setCreditRecords] = useState<CreditRecord[]>([])
+  const [usageRecords, setUsageRecords] = useState<UsageRecord[]>([])
+  const [systemSettings, setSystemSettings] = useState<SystemSettings | null>(null)
+  const [settingsDraft, setSettingsDraft] = useState(EMPTY_SETTINGS_DRAFT)
   const [showCreateUser, setShowCreateUser] = useState(false)
   const [amountByUser, setAmountByUser] = useState<Record<string, string>>({})
   const [error, setError] = useState<string | null>(null)
-  const [form, setForm] = useState({
-    username: '',
-    email: '',
-    password: 'user123456',
-    role: 'user' as UserRole,
-    credits: '20',
-    multiplier: '1',
-  })
+  const [form, setForm] = useState(EMPTY_CREATE_USER_FORM)
 
   const totals = useMemo(() => ({
     users: users.length,
@@ -85,13 +111,49 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
     credits: Number(users.reduce((sum, user) => sum + user.credits, 0).toFixed(2)),
   }), [users])
 
-  const refresh = () => {
-    setUsers(readUsers())
-    setCreditRecords(readCreditRecords())
-    setUsageRecords(readUsageRecords())
+  const refresh = async () => {
+    try {
+      const [nextUsers, nextCreditRecords, nextUsageRecords] = await Promise.all([
+        listUsers(),
+        readCreditRecords(),
+        readUsageRecords(true),
+      ])
+    setUsers(nextUsers)
+      setCreditRecords(nextCreditRecords)
+      setUsageRecords(nextUsageRecords)
+    } catch (error) {
+      setError(error instanceof Error ? error.message : '数据加载失败')
+    }
   }
 
-  const handleCreateUser = () => {
+  const refreshSettings = async () => {
+    const settings = await readSystemSettings()
+    setSystemSettings(settings)
+    setSettingsDraft({
+      registrationOpen: settings.auth.registrationOpen,
+      defaultCredits: String(settings.auth.defaultCredits),
+      defaultMultiplier: String(settings.auth.defaultMultiplier),
+      baseUrl: settings.imageApi.baseUrl,
+      apiKey: settings.imageApi.apiKey ?? '',
+      model: settings.imageApi.model,
+      apiMode: settings.imageApi.apiMode,
+      timeoutSeconds: String(settings.imageApi.timeoutSeconds),
+    })
+    setForm((current) => ({
+      ...current,
+      credits: current.credits || String(settings.auth.defaultCredits),
+      multiplier: current.multiplier || String(settings.auth.defaultMultiplier),
+    }))
+  }
+
+  useEffect(() => {
+    void refresh()
+    void refreshSettings().catch((error) => {
+      setError(error instanceof Error ? error.message : '系统设置加载失败')
+    })
+  }, [])
+
+  const handleCreateUser = async () => {
     setError(null)
     const credits = Number(form.credits)
     const multiplier = Number(form.multiplier)
@@ -100,14 +162,14 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
       return
     }
     if (!Number.isFinite(credits) || credits < 0) {
-      setError('默认额度必须是非负数字')
+      setError('用户额度必须是非负数字')
       return
     }
     if (!Number.isFinite(multiplier) || multiplier < 0) {
-      setError('专属倍率必须是非负数字')
+      setError('专属倍率必须是非负数字，允许填写 0.2 这类小数')
       return
     }
-    const result = createUser({
+    const result = await createUser({
       username: form.username,
       email: form.email,
       password: form.password,
@@ -119,26 +181,69 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
       setError(result.error)
       return
     }
-    setForm({ username: '', email: '', password: 'user123456', role: 'user', credits: '20', multiplier: '1' })
+    setForm({
+      ...EMPTY_CREATE_USER_FORM,
+      credits: systemSettings ? String(systemSettings.auth.defaultCredits) : '',
+      multiplier: systemSettings ? String(systemSettings.auth.defaultMultiplier) : '',
+    })
     setShowCreateUser(false)
-    refresh()
+    await refresh()
   }
 
-  const adjustCredits = (user: AppUser, type: 'recharge' | 'refund') => {
+  const adjustCredits = async (user: AppUser, type: 'recharge' | 'refund') => {
     setError(null)
-    const value = Number(amountByUser[user.id] ?? '10')
+    const value = Number(amountByUser[user.id] ?? '')
     if (!Number.isFinite(value) || value <= 0) {
       setError('请输入大于 0 的金额')
       return
     }
-    adjustUserCredits(user.id, value, type, currentUser.username)
-    refresh()
+    await adjustUserCredits(user.id, value, type)
+    await refresh()
+  }
+
+  const saveAuthSettings = async () => {
+    setError(null)
+    const defaultCredits = Number(settingsDraft.defaultCredits)
+    const defaultMultiplier = Number(settingsDraft.defaultMultiplier)
+    if (!Number.isFinite(defaultCredits) || defaultCredits < 0) {
+      setError('默认额度必须是非负数字')
+      return
+    }
+    if (!Number.isFinite(defaultMultiplier) || defaultMultiplier < 0) {
+      setError('默认倍率必须是非负数字，允许填写 0.2 这类小数')
+      return
+    }
+    const settings = await updateAuthSettings({
+      registrationOpen: settingsDraft.registrationOpen,
+      defaultCredits,
+      defaultMultiplier,
+    })
+    setSystemSettings(settings)
+  }
+
+  const saveImageApiSettings = async () => {
+    setError(null)
+    const timeoutSeconds = Number(settingsDraft.timeoutSeconds)
+    if (!Number.isFinite(timeoutSeconds) || timeoutSeconds < 10 || timeoutSeconds > 900) {
+      setError('请求超时必须在 10 到 900 秒之间')
+      return
+    }
+    const settings = await updateImageApiSettings({
+      provider: 'openai-compatible',
+      baseUrl: settingsDraft.baseUrl.trim(),
+      apiKey: settingsDraft.apiKey.trim() || systemSettings?.imageApi.apiKey,
+      model: settingsDraft.model.trim(),
+      apiMode: settingsDraft.apiMode,
+      timeoutSeconds,
+    })
+    setSystemSettings(settings)
   }
 
   const navItems: Array<{ key: ConsoleTab; label: string; desc: string }> = [
     { key: 'users', label: '用户管理', desc: '账号、额度、倍率' },
     { key: 'credits', label: '充值记录', desc: '充值和退款流水' },
     { key: 'usage', label: '消费记录', desc: '生图扣费明细' },
+    { key: 'settings', label: '系统设置', desc: '注册、上游 API、存储' },
   ]
 
   return (
@@ -158,8 +263,8 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
       <div className="safe-area-x mx-auto grid max-w-7xl items-start gap-5 py-5 lg:grid-cols-[240px_minmax(0,1fr)]">
         <aside className="self-start overflow-hidden rounded-xl border border-gray-200/70 bg-white shadow-sm dark:border-white/[0.08] dark:bg-gray-900">
           <div className="border-b border-gray-200/70 px-4 py-4 dark:border-white/[0.08]">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-400">Workspace</div>
-            <div className="mt-1.5 text-sm font-bold text-gray-900 dark:text-gray-100">Hua Admin</div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-400">系统管理</div>
+            <div className="mt-1.5 text-sm font-bold text-gray-900 dark:text-gray-100">管理控制台</div>
           </div>
           {navItems.map((item) => (
             <button
@@ -184,10 +289,10 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-xl font-bold tracking-tight">
-                  {tab === 'users' ? '用户管理' : tab === 'credits' ? '充值记录' : '消费记录'}
+                  {tab === 'users' ? '用户管理' : tab === 'credits' ? '充值记录' : tab === 'usage' ? '消费记录' : '系统设置'}
                 </h2>
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  {tab === 'users' ? '创建、禁用用户，并直接在表格中调整额度与倍率。' : tab === 'credits' ? '查看每次充值和退款的时间、金额、管理员操作账号。' : '查看用户生图扣费、倍率和质量明细。'}
+                  {tab === 'users' ? '创建、禁用用户，并直接在表格中调整额度与倍率。' : tab === 'credits' ? '查看每次充值和退款的时间、金额、管理员操作账号。' : tab === 'usage' ? '查看用户生图扣费、倍率和质量明细。' : '配置开放注册、默认额度、模型服务和存储选项。'}
                 </p>
               </div>
               {tab === 'users' && (
@@ -256,8 +361,7 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
                               <input
                                 value={user.multiplier}
                                 onChange={(event) => {
-                                  updateUser(user.id, { multiplier: Math.max(0, Number(event.target.value) || 0) })
-                                  refresh()
+                                  void updateUser(user.id, { multiplier: Math.max(0, Number(event.target.value) || 0) }).then(refresh)
                                 }}
                                 className="w-20 rounded-lg border border-gray-200/70 bg-white px-2 py-1.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]"
                               />
@@ -265,8 +369,9 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
                             <td className="px-3 py-2.5">
                               <div className="flex items-center gap-2">
                                 <input
-                                  value={amountByUser[user.id] ?? '10'}
+                                  value={amountByUser[user.id] ?? ''}
                                   onChange={(event) => setAmountByUser({ ...amountByUser, [user.id]: event.target.value })}
+                                  placeholder="金额"
                                   className="w-20 rounded-lg border border-gray-200/70 bg-white px-2 py-1.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]"
                                 />
                                 <button onClick={() => adjustCredits(user, 'recharge')} className="rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-medium text-blue-600 dark:bg-blue-500/10 dark:text-blue-300">充值</button>
@@ -276,10 +381,10 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
                             <td className="px-3 py-2.5">{user.disabled ? '禁用' : '启用'}</td>
                             <td className="px-3 py-2.5">
                               <div className="flex gap-2">
-                                <button onClick={() => { updateUser(user.id, { disabled: !user.disabled }); refresh() }} className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-medium dark:bg-white/[0.08]">
+                                <button onClick={() => { void updateUser(user.id, { disabled: !user.disabled }).then(refresh) }} className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-medium dark:bg-white/[0.08]">
                                   {user.disabled ? '启用' : '禁用'}
                                 </button>
-                                <button disabled={user.id === currentUser.id} onClick={() => { deleteUser(user.id); refresh() }} className="rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-600 disabled:opacity-40 dark:bg-red-500/10 dark:text-red-300">
+                                <button disabled={user.id === currentUser.id} onClick={() => { void deleteUser(user.id).then(refresh) }} className="rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-600 disabled:opacity-40 dark:bg-red-500/10 dark:text-red-300">
                                   删除
                                 </button>
                               </div>
@@ -337,6 +442,78 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
                   })}
                 </div>
               )}
+            </div>
+          )}
+
+          {tab === 'settings' && (
+            <div className="grid gap-4 p-5 lg:grid-cols-2">
+              <section className="rounded-xl border border-gray-200/70 p-4 dark:border-white/[0.08]">
+                <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">安全与注册</h3>
+                <div className="mt-4 space-y-4">
+                  <label className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2.5 dark:bg-white/[0.04]">
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-200">允许公开注册</span>
+                    <button
+                      type="button"
+                      onClick={() => setSettingsDraft((draft) => ({ ...draft, registrationOpen: !draft.registrationOpen }))}
+                      className={`relative inline-flex h-5 w-9 items-center rounded-full transition ${settingsDraft.registrationOpen ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-700'}`}
+                      role="switch"
+                      aria-checked={settingsDraft.registrationOpen}
+                    >
+                      <span className={`h-4 w-4 rounded-full bg-white shadow transition ${settingsDraft.registrationOpen ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                    </button>
+                  </label>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">新用户默认 Credits</span>
+                      <input value={settingsDraft.defaultCredits} onChange={(event) => setSettingsDraft({ ...settingsDraft, defaultCredits: event.target.value })} className="w-full rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">新用户默认倍率</span>
+                      <input value={settingsDraft.defaultMultiplier} onChange={(event) => setSettingsDraft({ ...settingsDraft, defaultMultiplier: event.target.value })} className="w-full rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
+                    </label>
+                  </div>
+                  <button onClick={saveAuthSettings} className="rounded-xl bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">保存注册设置</button>
+                </div>
+              </section>
+
+              <section className="rounded-xl border border-gray-200/70 p-4 dark:border-white/[0.08]">
+                <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">上游 API</h3>
+                <div className="mt-4 space-y-3">
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">API URL</span>
+                    <input value={settingsDraft.baseUrl} onChange={(event) => setSettingsDraft({ ...settingsDraft, baseUrl: event.target.value })} placeholder="https://api.openai.com/v1" className="w-full rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">API Key</span>
+                    <input value={settingsDraft.apiKey} onChange={(event) => setSettingsDraft({ ...settingsDraft, apiKey: event.target.value })} type="password" placeholder={systemSettings?.imageApi.apiKey ? '已配置，留空保持不变' : 'sk-...'} className="w-full rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
+                  </label>
+                  <div className="grid gap-3 sm:grid-cols-[1fr_140px_110px]">
+                    <label className="block">
+                      <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">模型 ID</span>
+                      <input value={settingsDraft.model} onChange={(event) => setSettingsDraft({ ...settingsDraft, model: event.target.value })} className="w-full rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">接口模式</span>
+                      <select value={settingsDraft.apiMode} onChange={(event) => setSettingsDraft({ ...settingsDraft, apiMode: event.target.value as SystemSettings['imageApi']['apiMode'] })} className="w-full rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]">
+                        <option value="images">Images</option>
+                        <option value="responses">Responses</option>
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">超时秒</span>
+                      <input value={settingsDraft.timeoutSeconds} onChange={(event) => setSettingsDraft({ ...settingsDraft, timeoutSeconds: event.target.value })} className="w-full rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
+                    </label>
+                  </div>
+                  <button onClick={saveImageApiSettings} className="rounded-xl bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">保存 API 设置</button>
+                </div>
+              </section>
+
+              <section className="rounded-xl border border-gray-200/70 p-4 dark:border-white/[0.08] lg:col-span-2">
+                <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">S3 对象存储桶设置</h3>
+                <div className="mt-3 rounded-xl bg-gray-50 px-4 py-5 text-sm text-gray-500 dark:bg-white/[0.04] dark:text-gray-400">
+                  敬请期待。当前图片保存到本地存储空间。
+                </div>
+              </section>
             </div>
           )}
         </section>

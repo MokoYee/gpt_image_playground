@@ -1,16 +1,10 @@
 import { useMemo, useRef, useState, useEffect } from 'react'
 import { useStore, reuseConfig, editOutputs, removeTask } from '../store'
 import TaskCard from './TaskCard'
-import { findUserById } from '../lib/auth'
+import { readAuthSession } from '../lib/auth'
 
 function getCurrentUser() {
-  try {
-    const saved = window.localStorage.getItem('hua-image-playground.auth-session')
-    const parsed = saved ? JSON.parse(saved) as { id?: string } : null
-    return findUserById(parsed?.id)
-  } catch {
-    return null
-  }
+  return readAuthSession()?.user ?? null
 }
 
 export default function TaskGrid() {

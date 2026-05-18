@@ -1,6 +1,7 @@
-import { useState } from 'react'
-import { readUsageRecords, updateUser } from '../lib/auth'
+import { useEffect, useState } from 'react'
+import { changePassword as changePasswordApi, fetchCurrentUser, readUsageRecords } from '../lib/auth'
 import type { AppUser } from '../lib/auth'
+import type { UsageRecord } from '../lib/auth'
 
 interface AccountPageProps {
   user: AppUser
@@ -16,22 +17,45 @@ export default function AccountPage({ user, onClose, onUserChange }: AccountPage
   const [oldPassword, setOldPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [message, setMessage] = useState<string | null>(null)
-  const usageRecords = readUsageRecords().filter((record) => record.userId === user.id)
+  const [usageRecords, setUsageRecords] = useState<UsageRecord[]>([])
+  const [currentUser, setCurrentUser] = useState(user)
 
-  const changePassword = () => {
-    if (oldPassword !== user.password) {
-      setMessage('原密码不正确')
-      return
+  useEffect(() => {
+    let cancelled = false
+    void Promise.all([
+      fetchCurrentUser(),
+      readUsageRecords(false),
+    ])
+      .then(([nextUser, records]) => {
+        if (cancelled) return
+        if (nextUser) {
+          setCurrentUser(nextUser)
+          onUserChange(nextUser)
+        }
+        setUsageRecords(records)
+      })
+      .catch((error) => {
+        if (!cancelled) setMessage(error instanceof Error ? error.message : '账户数据加载失败')
+      })
+    return () => {
+      cancelled = true
     }
+  }, [])
+
+  const changePassword = async () => {
     if (newPassword.length < 8 || !/[A-Za-z]/.test(newPassword) || !/\d/.test(newPassword)) {
       setMessage('新密码至少 8 位，并包含字母和数字')
       return
     }
-    const nextUser = updateUser(user.id, { password: newPassword })
-    if (nextUser) onUserChange(nextUser)
-    setOldPassword('')
-    setNewPassword('')
-    setMessage('密码已修改')
+    try {
+      await changePasswordApi(oldPassword, newPassword)
+      onUserChange(currentUser)
+      setOldPassword('')
+      setNewPassword('')
+      setMessage('密码已修改')
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '密码修改失败')
+    }
   }
 
   return (
@@ -40,7 +64,7 @@ export default function AccountPage({ user, onClose, onUserChange }: AccountPage
         <div className="safe-area-x safe-header-inner mx-auto flex max-w-5xl items-center justify-between">
           <div>
             <h1 className="text-lg font-bold tracking-tight">我的账户</h1>
-            <p className="text-xs text-gray-500 dark:text-gray-400">{user.email}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">{currentUser.email}</p>
           </div>
           <button onClick={onClose} className="rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-800 dark:bg-white dark:text-gray-950 dark:hover:bg-gray-200">
             返回生图
@@ -53,8 +77,8 @@ export default function AccountPage({ user, onClose, onUserChange }: AccountPage
           <h2 className="text-sm font-semibold">账户额度</h2>
           <div className="mt-4 rounded-xl bg-blue-50 p-4 dark:bg-blue-500/10">
             <div className="text-xs text-blue-600 dark:text-blue-300">当前 Credits</div>
-            <div className="mt-1 text-3xl font-bold text-blue-700 dark:text-blue-200">{user.credits.toFixed(2)}</div>
-            <div className="mt-2 text-xs text-blue-600/80 dark:text-blue-300/80">专属倍率：{user.multiplier}x</div>
+            <div className="mt-1 text-3xl font-bold text-blue-700 dark:text-blue-200">{currentUser.credits.toFixed(2)}</div>
+            <div className="mt-2 text-xs text-blue-600/80 dark:text-blue-300/80">专属倍率：{currentUser.multiplier}x</div>
           </div>
 
           <h2 className="mt-6 text-sm font-semibold">修改密码</h2>

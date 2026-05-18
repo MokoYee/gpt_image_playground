@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { authenticateUser, createUser } from '../lib/auth'
+import { authenticateUser, readPublicSettings, registerUser } from '../lib/auth'
 import type { AppUser } from '../lib/auth'
 
 type AuthMode = 'login' | 'register'
@@ -92,14 +92,33 @@ export default function AuthPage({ onAuthenticated }: AuthPageProps) {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [errors, setErrors] = useState<Record<string, string | null>>({})
   const [message, setMessage] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [registrationOpen, setRegistrationOpen] = useState(true)
+
+  useEffect(() => {
+    void readPublicSettings()
+      .then((settings) => {
+        setRegistrationOpen(settings.auth.registrationOpen)
+        if (!settings.auth.registrationOpen) setMode('login')
+      })
+      .catch(() => {
+        setRegistrationOpen(false)
+      })
+  }, [])
 
   const switchMode = (nextMode: AuthMode) => {
+    if (nextMode === 'register' && !registrationOpen) {
+      setMode('login')
+      setErrors({})
+      setMessage('当前未开放公开注册，请联系管理员创建账号')
+      return
+    }
     setMode(nextMode)
     setErrors({})
     setMessage(null)
   }
 
-  const handleLogin = (event: FormEvent) => {
+  const handleLogin = async (event: FormEvent) => {
     event.preventDefault()
     const nextErrors = {
       loginId: validateLoginIdentifier(loginId),
@@ -109,7 +128,9 @@ export default function AuthPage({ onAuthenticated }: AuthPageProps) {
     setMessage(null)
     if (nextErrors.loginId || nextErrors.loginPassword) return
 
-    const result = authenticateUser(loginId, loginPassword)
+    setSubmitting(true)
+    const result = await authenticateUser(loginId, loginPassword)
+    setSubmitting(false)
     if (!result.user) {
       setErrors({ loginPassword: result.error ?? '账号或密码不正确' })
       return
@@ -118,8 +139,12 @@ export default function AuthPage({ onAuthenticated }: AuthPageProps) {
     onAuthenticated(result.user)
   }
 
-  const handleRegister = (event: FormEvent) => {
+  const handleRegister = async (event: FormEvent) => {
     event.preventDefault()
+    if (!registrationOpen) {
+      setMessage('当前未开放公开注册，请联系管理员创建账号')
+      return
+    }
     const nextErrors = {
       username: validateUsername(username),
       email: validateEmail(email),
@@ -130,32 +155,24 @@ export default function AuthPage({ onAuthenticated }: AuthPageProps) {
     setMessage(null)
     if (Object.values(nextErrors).some(Boolean)) return
 
-    const result = createUser({
+    setSubmitting(true)
+    const result = await registerUser({
       username: username.trim(),
       email: email.trim(),
       password,
-      role: 'user',
-      credits: 20,
-      multiplier: 1,
     })
+    setSubmitting(false)
     if (!result.user) {
       setErrors({ email: result.error })
       return
     }
-    setLoginId(result.user.email)
-    setLoginPassword('')
-    setUsername('')
-    setEmail('')
-    setPassword('')
-    setConfirmPassword('')
-    switchMode('login')
-    setMessage('注册成功，请使用新账号登录')
+    onAuthenticated(result.user)
   }
 
   const handleForgotPassword = () => {
     const emailError = validateEmail(loginId)
     setErrors(emailError ? { loginId: '请输入邮箱地址后再找回密码' } : {})
-    setMessage(emailError ? null : '密码找回暂未接入后端，请联系管理员重置密码')
+    setMessage(emailError ? null : '请联系管理员重置密码')
   }
 
   return (
@@ -182,20 +199,20 @@ export default function AuthPage({ onAuthenticated }: AuthPageProps) {
             <div className="absolute bottom-7 left-7 right-7 text-slate-950">
               <div className="max-w-[280px]">
                 <h1 className="text-2xl font-bold leading-tight tracking-tight">更专注地进入图像创作工作台</h1>
-                <p className="mt-3 text-sm leading-6 text-slate-600">登录后继续在本地保存生成记录、配置 Image2 模型，并管理你的图像创作流程。</p>
+                <p className="mt-3 text-sm leading-6 text-slate-600">登录后继续生成图片，统一管理历史记录、账户额度与创作流程。</p>
               </div>
               <div className="mt-6 grid grid-cols-3 gap-2.5 text-center">
                 <div className="rounded-xl border border-white/75 bg-white/54 px-2.5 py-2.5 shadow-sm backdrop-blur-md">
-                  <div className="text-sm font-bold">Local</div>
-                  <div className="mt-1 text-[11px] text-slate-500">本地存储</div>
+                  <div className="text-sm font-bold">Secure</div>
+                  <div className="mt-1 text-[11px] text-slate-500">安全访问</div>
                 </div>
                 <div className="rounded-xl border border-white/75 bg-white/54 px-2.5 py-2.5 shadow-sm backdrop-blur-md">
-                  <div className="text-sm font-bold">Image2</div>
-                  <div className="mt-1 text-[11px] text-slate-500">模型配置</div>
+                  <div className="text-sm font-bold">Credits</div>
+                  <div className="mt-1 text-[11px] text-slate-500">额度计费</div>
                 </div>
                 <div className="rounded-xl border border-white/75 bg-white/54 px-2.5 py-2.5 shadow-sm backdrop-blur-md">
-                  <div className="text-sm font-bold">Flow</div>
-                  <div className="mt-1 text-[11px] text-slate-500">创作流程</div>
+                  <div className="text-sm font-bold">History</div>
+                  <div className="mt-1 text-[11px] text-slate-500">历史记录</div>
                 </div>
               </div>
             </div>
@@ -217,7 +234,7 @@ export default function AuthPage({ onAuthenticated }: AuthPageProps) {
                 <p className="text-xs font-semibold text-blue-600">{mode === 'login' ? '欢迎回来' : '创建账号'}</p>
                 <h2 className="mt-1.5 text-2xl font-bold tracking-tight text-gray-950">{mode === 'login' ? '登录 Hua Image' : '加入 Hua Image'}</h2>
                 <p className="mt-2 text-sm leading-6 text-gray-500">
-                  {mode === 'login' ? '使用用户名或邮箱继续你的图像生成流程。' : '注册后在本地保存你的生成记录和偏好配置。'}
+                  {mode === 'login' ? '使用用户名或邮箱继续你的图像生成流程。' : '注册后即可获得账户额度并保存历史记录。'}
                 </p>
               </div>
 
@@ -225,9 +242,11 @@ export default function AuthPage({ onAuthenticated }: AuthPageProps) {
                 <ModeButton active={mode === 'login'} onClick={() => switchMode('login')}>
                   登录
                 </ModeButton>
-                <ModeButton active={mode === 'register'} onClick={() => switchMode('register')}>
-                  注册
-                </ModeButton>
+                {registrationOpen && (
+                  <ModeButton active={mode === 'register'} onClick={() => switchMode('register')}>
+                    注册
+                  </ModeButton>
+                )}
               </div>
 
               {mode === 'login' && (
@@ -261,9 +280,10 @@ export default function AuthPage({ onAuthenticated }: AuthPageProps) {
 
                   <button
                     type="submit"
+                    disabled={submitting}
                     className="mt-1 flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm outline-none transition hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-blue-500/30 active:scale-[0.99]"
                   >
-                    <span>登录</span>
+                    <span>{submitting ? '登录中' : '登录'}</span>
                     <ArrowRightIcon />
                   </button>
 
@@ -334,9 +354,10 @@ export default function AuthPage({ onAuthenticated }: AuthPageProps) {
 
                   <button
                     type="submit"
+                    disabled={submitting}
                     className="mt-1 flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm outline-none transition hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-blue-500/30 active:scale-[0.99]"
                   >
-                    <span>注册</span>
+                    <span>{submitting ? '注册中' : '注册'}</span>
                     <ArrowRightIcon />
                   </button>
                 </form>

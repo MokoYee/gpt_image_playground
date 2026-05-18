@@ -3,12 +3,13 @@ import { createPortal } from 'react-dom'
 import { useStore, submitTask, addImageFromFile, updateTaskInStore, removeMultipleTasks, getCachedImage, ensureImageCached } from '../store'
 import { DEFAULT_PARAMS } from '../types'
 import { getActiveApiProfile, normalizeSettings } from '../lib/apiProfiles'
-import { DEFAULT_FAL_IMAGE_SIZE, getChangedParams, getOutputImageLimitForSettings, normalizeParamsForSettings } from '../lib/paramCompatibility'
+import { getChangedParams, getOutputImageLimitForSettings, normalizeParamsForSettings } from '../lib/paramCompatibility'
 import { getAtImageQuery, getImageMentionLabel, getPromptIndexFromVisibleIndex, getPromptMentionParts, getSelectedImageMentionLabel, imageMentionMatches, insertImageMentionAtVisibleRange, isCursorInSelectedImageMention, stripImageMentionMarkers } from '../lib/promptImageMentions'
 import { normalizeImageSize } from '../lib/size'
 import { createMaskPreviewDataUrl } from '../lib/canvasImage'
 import { dismissAllTooltips } from '../lib/tooltipDismiss'
 import { getSafeBoundingClientRect } from '../lib/domRect'
+import { getAuthToken } from '../lib/auth'
 import Select from './Select'
 import SizePickerModal from './SizePickerModal'
 import ViewportTooltip from './ViewportTooltip'
@@ -461,32 +462,20 @@ export default function InputBar() {
       ? settings
       : normalizeSettings({ ...settings, activeProfileId: activeProfile.id })
   ), [activeProfile.id, currentActiveProfile.id, settings])
-  const hasSubmitApiConfig = Boolean(activeProfile.apiKey)
+  const hasBackendSession = Boolean(getAuthToken())
+  const hasSubmitApiConfig = hasBackendSession || Boolean(activeProfile.apiKey)
   const canSubmit = Boolean(prompt.trim() && hasSubmitApiConfig)
-  const activeProvider = activeProfile.provider
-  const isFalProvider = activeProvider === 'fal'
-  const moderationDisabled = activeProfile.apiMode === 'responses' || isFalProvider
-  const compressionDisabled = params.output_format === 'png' || isFalProvider
+  const moderationDisabled = activeProfile.apiMode === 'responses'
+  const compressionDisabled = params.output_format === 'png'
   const outputImageLimit = getOutputImageLimitForSettings(effectiveSettings)
-  const isFalTextToImage = isFalProvider && inputImages.length === 0
-  const nLimitHintText = isFalProvider
-    ? `fal.ai 最大请求数量为 ${outputImageLimit}`
-    : `OpenAI 最大请求数量为 ${outputImageLimit}`
-  const displaySize = isFalTextToImage && params.size === 'auto'
-    ? DEFAULT_FAL_IMAGE_SIZE
-    : normalizeImageSize(params.size) || DEFAULT_PARAMS.size
-  const qualityOptions = isFalProvider
-    ? [
-        { label: 'low', value: 'low' },
-        { label: 'medium', value: 'medium' },
-        { label: 'high', value: 'high' },
-      ]
-    : [
-        { label: 'auto', value: 'auto' },
-        { label: 'low', value: 'low' },
-        { label: 'medium', value: 'medium' },
-        { label: 'high', value: 'high' },
-      ]
+  const nLimitHintText = `OpenAI 最大请求数量为 ${outputImageLimit}`
+  const displaySize = normalizeImageSize(params.size) || DEFAULT_PARAMS.size
+  const qualityOptions = [
+    { label: 'auto', value: 'auto' },
+    { label: 'low', value: 'low' },
+    { label: 'medium', value: 'medium' },
+    { label: 'high', value: 'high' },
+  ]
   const atImageLimit = inputImages.length >= API_MAX_IMAGES
   const maskTargetImage = maskDraft
     ? inputImages.find((img) => img.id === maskDraft.targetImageId) ?? null
@@ -722,12 +711,10 @@ export default function InputBar() {
   }
 
   const showQualityHint = () => {
-    if (settings.codexCli || isFalProvider) setQualityHintVisible(true)
+    if (settings.codexCli) setQualityHintVisible(true)
   }
 
-  const showSizeHint = () => {
-    if (isFalTextToImage) setSizeHintVisible(true)
-  }
+  const showSizeHint = () => {}
 
   const hideSizeHint = () => {
     setSizeHintVisible(false)
@@ -741,13 +728,7 @@ export default function InputBar() {
     }
   }
 
-  const startSizeHintTouch = () => {
-    if (!isFalTextToImage) return
-    sizeHintTimerRef.current = window.setTimeout(() => {
-      setSizeHintVisible(true)
-      sizeHintTimerRef.current = null
-    }, 450)
-  }
+  const startSizeHintTouch = () => {}
 
   const hideQualityHint = () => {
     setQualityHintVisible(false)
@@ -762,7 +743,7 @@ export default function InputBar() {
   }
 
   const startQualityHintTouch = () => {
-    if (!settings.codexCli && !isFalProvider) return
+    if (!settings.codexCli) return
     qualityHintTimerRef.current = window.setTimeout(() => {
       setQualityHintVisible(true)
       qualityHintTimerRef.current = null
@@ -1479,10 +1460,6 @@ export default function InputBar() {
         >
           {displaySize}
         </button>
-        <ButtonTooltip
-          visible={isFalTextToImage && sizeHintVisible}
-          text={<>fal.ai 的文生图模式不支持 <code className="rounded bg-white/10 px-1 py-0.5 font-mono">auto</code> 参数</>}
-        />
       </label>
       <label
         className="relative flex flex-col gap-0.5"
@@ -1495,7 +1472,7 @@ export default function InputBar() {
       >
         <span className="text-gray-400 dark:text-gray-500 ml-1">质量</span>
         <Select
-          value={settings.codexCli ? 'auto' : isFalProvider && params.quality === 'auto' ? 'high' : params.quality}
+          value={settings.codexCli ? 'auto' : params.quality}
           onChange={(val) => {
             if (!settings.codexCli) setParams({ quality: val as any })
           }}
@@ -1506,8 +1483,8 @@ export default function InputBar() {
             : selectClass}
         />
         <ButtonTooltip
-          visible={(settings.codexCli || isFalProvider) && qualityHintVisible}
-          text={isFalProvider ? <>fal.ai 不支持 <code className="rounded bg-white/10 px-1 py-0.5 font-mono">auto</code> 质量参数</> : 'Codex CLI 不支持质量参数'}
+          visible={settings.codexCli && qualityHintVisible}
+          text="Codex CLI 不支持质量参数"
         />
       </label>
       <label className="flex flex-col gap-0.5">
@@ -1550,7 +1527,7 @@ export default function InputBar() {
         />
         <ButtonTooltip
           visible={compressionHintVisible}
-          text={isFalProvider ? 'fal.ai 不支持压缩率参数' : '仅 JPEG 和 WebP 支持压缩率'}
+          text="仅 JPEG 和 WebP 支持压缩率"
         />
       </label>
       <label
@@ -1579,7 +1556,7 @@ export default function InputBar() {
         />
         <ButtonTooltip
           visible={moderationDisabled && moderationHintVisible}
-          text={isFalProvider ? 'fal.ai 不支持审核参数' : 'Responses API 不支持审核参数'}
+          text="Responses API 不支持审核参数"
         />
       </label>
       <label className="relative flex flex-col gap-0.5">
@@ -1650,10 +1627,10 @@ export default function InputBar() {
 
       {showSizePicker && (
         <SizePickerModal
-          currentSize={isFalTextToImage && params.size === 'auto' ? DEFAULT_FAL_IMAGE_SIZE : params.size}
+          currentSize={params.size}
           onSelect={(size) => setParams({ size })}
           onClose={() => setShowSizePicker(false)}
-          allowAuto={!isFalTextToImage}
+          allowAuto
         />
       )}
 
