@@ -1,7 +1,8 @@
 node_modules
 dist
+dist-server
 .git
-.gitignore
-*.md
-Dockerfile
-.dockerignore
+.history
+node.txt
+dev-proxy.config.json
+.wrangler
