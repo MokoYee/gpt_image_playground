@@ -1,6 +1,17 @@
 import { useMemo, useRef, useState, useEffect } from 'react'
 import { useStore, reuseConfig, editOutputs, removeTask } from '../store'
 import TaskCard from './TaskCard'
+import { findUserById } from '../lib/auth'
+
+function getCurrentUser() {
+  try {
+    const saved = window.localStorage.getItem('hua-image-playground.auth-session')
+    const parsed = saved ? JSON.parse(saved) as { id?: string } : null
+    return findUserById(parsed?.id)
+  } catch {
+    return null
+  }
+}
 
 export default function TaskGrid() {
   const tasks = useStore((s) => s.tasks)
@@ -27,12 +38,17 @@ export default function TaskGrid() {
   const startedWithCtrl = useRef(false)
   const initialSelection = useRef<string[]>([])
   const isMac = /Mac|iPod|iPhone|iPad/.test(navigator.platform)
+  const currentUser = getCurrentUser()
 
   const filteredTasks = useMemo(() => {
     const sorted = [...tasks].sort((a, b) => b.createdAt - a.createdAt)
     const q = searchQuery.trim().toLowerCase()
     
     return sorted.filter((t) => {
+      if (currentUser) {
+        const canSeeTask = t.ownerUserId === currentUser.id || (!t.ownerUserId && currentUser.role === 'admin')
+        if (!canSeeTask) return false
+      }
       if (filterFavorite && !t.isFavorite) return false
       const matchStatus = filterStatus === 'all' || t.status === filterStatus
       if (!matchStatus) return false
@@ -42,7 +58,7 @@ export default function TaskGrid() {
       const paramStr = JSON.stringify(t.params).toLowerCase()
       return prompt.includes(q) || paramStr.includes(q)
     })
-  }, [tasks, searchQuery, filterStatus, filterFavorite])
+  }, [tasks, searchQuery, filterStatus, filterFavorite, currentUser?.id, currentUser?.role])
 
   const handleDelete = (task: typeof tasks[0]) => {
     setConfirmDialog({

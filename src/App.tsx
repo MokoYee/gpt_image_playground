@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { initStore } from './store'
 import { useStore } from './store'
 import { buildSettingsFromUrlParams, clearUrlSettingParams, hasUrlSettingParams } from './lib/urlSettings'
@@ -15,9 +15,35 @@ import Toast from './components/Toast'
 import MaskEditorModal from './components/MaskEditorModal'
 import ImageContextMenu from './components/ImageContextMenu'
 import SupportPromptModal from './components/SupportPromptModal'
+import AuthPage from './components/AuthPage'
+import ConsolePage from './components/ConsolePage'
+import AccountPage from './components/AccountPage'
+import { AUTH_SESSION_STORAGE_KEY, findUserById } from './lib/auth'
+import type { AppUser } from './lib/auth'
+
+type AppView = 'app' | 'console' | 'account'
+
+function readRouteView(): AppView {
+  const route = window.location.hash.replace(/^#\/?/, '')
+  if (route === 'console' || route === 'account') return route
+  return 'app'
+}
+
+function readAuthSession(): AppUser | null {
+  try {
+    const saved = window.localStorage.getItem(AUTH_SESSION_STORAGE_KEY)
+    if (!saved) return null
+    const parsed = JSON.parse(saved) as { id?: string } | null
+    return findUserById(parsed?.id)
+  } catch {
+    return null
+  }
+}
 
 export default function App() {
   const setSettings = useStore((s) => s.setSettings)
+  const [authSession, setAuthSession] = useState<AppUser | null>(() => readAuthSession())
+  const [view, setView] = useState<AppView>(() => readRouteView())
   useDockerApiUrlMigrationNotice()
 
   useEffect(() => {
@@ -48,9 +74,62 @@ export default function App() {
     return () => document.removeEventListener('dragstart', preventPageImageDrag)
   }, [])
 
+  useEffect(() => {
+    const syncRoute = () => setView(readRouteView())
+    window.addEventListener('hashchange', syncRoute)
+    window.addEventListener('popstate', syncRoute)
+    return () => {
+      window.removeEventListener('hashchange', syncRoute)
+      window.removeEventListener('popstate', syncRoute)
+    }
+  }, [])
+
+  const navigateView = (nextView: AppView, replace = false) => {
+    const nextHash = nextView === 'app' ? '' : `#/${nextView}`
+    const nextUrl = `${window.location.pathname}${window.location.search}${nextHash}`
+    if (replace) {
+      window.history.replaceState(null, '', nextUrl)
+    } else {
+      window.history.pushState(null, '', nextUrl)
+    }
+    setView(nextView)
+  }
+
+  const handleAuthenticated = (user: AppUser) => {
+    const session = { id: user.id, username: user.username, email: user.email, role: user.role }
+    window.localStorage.setItem(AUTH_SESSION_STORAGE_KEY, JSON.stringify(session))
+    setAuthSession(user)
+    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`)
+    setView('app')
+  }
+
+  const handleLogout = () => {
+    window.localStorage.removeItem(AUTH_SESSION_STORAGE_KEY)
+    setAuthSession(null)
+    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`)
+    setView('app')
+  }
+
+  if (!authSession) {
+    return <AuthPage onAuthenticated={handleAuthenticated} />
+  }
+
+  if (view === 'console' && authSession.role === 'admin') {
+    return <ConsolePage currentUser={authSession} onClose={() => navigateView('app', true)} />
+  }
+
+  if (view === 'account') {
+    return <AccountPage user={authSession} onClose={() => navigateView('app', true)} onUserChange={handleAuthenticated} />
+  }
+
   return (
     <>
-      <Header />
+      <Header
+        user={authSession}
+        onLogout={handleLogout}
+        onOpenConsole={authSession.role === 'admin' ? () => navigateView('console') : undefined}
+        onOpenAccount={() => navigateView('account')}
+      />
       <main data-home-main data-drag-select-surface className="pb-48">
         <div className="safe-area-x max-w-7xl mx-auto">
           <SearchBar />

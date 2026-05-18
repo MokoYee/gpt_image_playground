@@ -76,10 +76,8 @@ export default function SupportPromptModal() {
             </svg>
             赞助作者
           </a>
-          <a
-            href="https://github.com/CookSleep/gpt_image_playground/issues"
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            type="button"
             onClick={dismissSupportPrompt}
             className="flex w-full sm:w-auto flex-1 items-center justify-center gap-2 rounded-2xl bg-[#f4f4f5] px-5 py-3.5 text-[15px] font-semibold text-gray-600 transition-all hover:bg-gray-200 active:scale-[0.98] dark:bg-[#27272a] dark:text-gray-300 dark:hover:bg-[#3f3f46]"
           >
@@ -87,7 +85,7 @@ export default function SupportPromptModal() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
             </svg>
             反馈问题
-          </a>
+          </button>
         </div>
       </div>
     </div>,

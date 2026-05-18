@@ -128,6 +128,7 @@ export type TaskStatus = 'running' | 'done' | 'error'
 
 export interface TaskRecord {
   id: string
+  ownerUserId?: string
   prompt: string
   params: TaskParams
   /** 生成时使用的 Provider 类型 */

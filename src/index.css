@@ -224,6 +224,11 @@ input[type="number"] {
   }
 }
 
+.auth-panel input {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
 /* contentEditable 中的 @图N 胶囊 tag */
 .mention-tag {
   display: inline-flex;

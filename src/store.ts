@@ -37,6 +37,7 @@ import { getCustomQueuedImageResult } from './lib/openaiCompatibleImageApi'
 import { validateMaskMatchesImage } from './lib/canvasImage'
 import { orderInputImagesForMask } from './lib/mask'
 import { getChangedParams, normalizeParamsForSettings } from './lib/paramCompatibility'
+import { calculateTaskCredits, findUserById, recordTaskUsage } from './lib/auth'
 import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate'
 
 // ===== Image cache =====
@@ -1170,6 +1171,27 @@ export async function submitTask(options: { allowFullMask?: boolean; useCurrentA
   }
 
   const normalizedParams = normalizeParamsForSettings(params, requestSettings, { hasInputImages: orderedInputImages.length > 0 })
+  const sessionUserId = (() => {
+    try {
+      const saved = window.localStorage.getItem('hua-image-playground.auth-session')
+      const parsed = saved ? JSON.parse(saved) as { id?: string } : null
+      return typeof parsed?.id === 'string' ? parsed.id : undefined
+    } catch {
+      return undefined
+    }
+  })()
+  const sessionUser = findUserById(sessionUserId)
+  if (sessionUser?.disabled) {
+    showToast('当前账号已被禁用，无法生成图片', 'error')
+    return
+  }
+  if (sessionUser) {
+    const estimatedCredits = calculateTaskCredits(normalizedParams, sessionUser.multiplier, normalizedParams.n)
+    if (sessionUser.credits < estimatedCredits) {
+      showToast(`Credits 不足，本次预计消耗 ${estimatedCredits} Credits`, 'error')
+      return
+    }
+  }
   const normalizedParamPatch = getChangedParams(params, normalizedParams)
   if (Object.keys(normalizedParamPatch).length) {
     useStore.getState().setParams(normalizedParamPatch)
@@ -1178,6 +1200,7 @@ export async function submitTask(options: { allowFullMask?: boolean; useCurrentA
   const taskId = genId()
   const task: TaskRecord = {
     id: taskId,
+    ownerUserId: sessionUser?.id,
     prompt: prompt.trim(),
     params: normalizedParams,
     apiProvider: activeProfile.provider,
@@ -1332,6 +1355,9 @@ async function executeTask(taskId: string) {
       falRecoverable: false,
       customRecoverable: false,
     })
+    if (latestBeforeUpdate.ownerUserId) {
+      recordTaskUsage(latestBeforeUpdate.ownerUserId, taskId, latestBeforeUpdate.prompt, latestBeforeUpdate.params, outputIds.length)
+    }
 
     useStore.getState().showToast(`生成完成，共 ${outputIds.length} 张图片`, 'success')
     const currentMask = useStore.getState().maskDraft

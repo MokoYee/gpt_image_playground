@@ -1,89 +1,32 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useStore } from '../store'
 import { useVersionCheck } from '../hooks/useVersionCheck'
 import { useTooltip } from '../hooks/useTooltip'
 import { dismissAllTooltips } from '../lib/tooltipDismiss'
 import ViewportTooltip from './ViewportTooltip'
 import HelpModal from './HelpModal'
+import type { UserRole } from '../lib/auth'
 
-type BeforeInstallPromptEvent = Event & {
-  prompt: () => Promise<void>
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>
+interface HeaderProps {
+  user?: {
+    username: string
+    email: string
+    role?: UserRole
+  }
+  onLogout?: () => void
+  onOpenConsole?: () => void
+  onOpenAccount?: () => void
 }
 
-function isInstalledPwa() {
-  const nav = window.navigator as Navigator & { standalone?: boolean }
-  return window.matchMedia('(display-mode: standalone)').matches || nav.standalone === true
-}
-
-export default function Header() {
+export default function Header({ user, onLogout, onOpenConsole, onOpenAccount }: HeaderProps) {
   const setShowSettings = useStore((s) => s.setShowSettings)
-  const setConfirmDialog = useStore((s) => s.setConfirmDialog)
   const { hasUpdate, latestRelease, dismiss } = useVersionCheck()
   const [showHelp, setShowHelp] = useState(false)
-  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null)
-  const [isPwaInstalled, setIsPwaInstalled] = useState(isInstalledPwa)
 
-  const installTooltip = useTooltip()
+  const consoleTooltip = useTooltip()
+  const accountTooltip = useTooltip()
   const helpTooltip = useTooltip()
   const settingsTooltip = useTooltip()
-
-  useEffect(() => {
-    const handleBeforeInstallPrompt = (event: Event) => {
-      event.preventDefault()
-      setInstallPrompt(event as BeforeInstallPromptEvent)
-      setIsPwaInstalled(false)
-    }
-
-    const handleAppInstalled = () => {
-      setInstallPrompt(null)
-      setIsPwaInstalled(true)
-    }
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
-    window.addEventListener('appinstalled', handleAppInstalled)
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
-      window.removeEventListener('appinstalled', handleAppInstalled)
-    }
-  }, [])
-
-  const handleInstallClick = async () => {
-    if (installPrompt) {
-      const promptEvent = installPrompt
-      setInstallPrompt(null)
-
-      try {
-        await promptEvent.prompt()
-        const choice = await promptEvent.userChoice
-        setIsPwaInstalled(choice.outcome === 'accepted')
-      } catch {
-        setIsPwaInstalled(isInstalledPwa())
-      }
-    } else {
-      const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-      if (isIos) {
-        setConfirmDialog({
-          title: '安装为应用',
-          message: '在 Safari 浏览器中，点击底部「分享」按钮，选择「添加到主屏幕」即可安装此应用。',
-          showCancel: false,
-          confirmText: '我知道了',
-          icon: 'info',
-          action: () => {},
-        })
-      } else {
-        setConfirmDialog({
-          title: '安装为应用',
-          message: '请在浏览器的菜单中选择「添加到主屏幕」或「安装应用」。\n\n（如果在微信等内置浏览器中，请先在外部浏览器打开）',
-          showCancel: false,
-          confirmText: '我知道了',
-          icon: 'info',
-          action: () => {},
-        })
-      }
-    }
-  }
 
   return (
     <>
@@ -91,41 +34,39 @@ export default function Header() {
         <div className="safe-area-x safe-header-inner max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex-1 min-w-0 pr-2">
             <h1 className="inline-flex items-start relative">
-              <a
-                href="https://github.com/CookSleep/gpt_image_playground"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[17px] sm:text-lg font-bold tracking-tight text-gray-800 dark:text-gray-100 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-              >
-                GPT Image Playground
-              </a>
+              <span className="text-[17px] sm:text-lg font-bold tracking-tight text-gray-800 dark:text-gray-100">
+                Hua Image Playground
+              </span>
               {hasUpdate && latestRelease && (
-                <a
-                  href={latestRelease.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  type="button"
                   onClick={dismiss}
                   className="absolute -right-1 -top-1 translate-x-full -translate-y-1/4 px-1 py-0.5 rounded-[4px] border border-red-500/30 text-[9px] font-black bg-red-500 text-white hover:bg-red-600 transition-all animate-fade-in leading-none shadow-sm"
                   title={`新版本 ${latestRelease.tag}`}
                 >
                   NEW
-                </a>
+                </button>
               )}
             </h1>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            {!isPwaInstalled && (
+            {user && (
+              <div className="hidden items-center gap-2 rounded-xl border border-gray-200/70 bg-white/60 px-2.5 py-1.5 text-xs text-gray-600 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-300 sm:flex">
+                <span className="max-w-28 truncate font-medium">{user.username}</span>
+              </div>
+            )}
+            {onOpenConsole && (
               <div
                 className="relative"
-                {...installTooltip.handlers}
+                {...consoleTooltip.handlers}
               >
                 <button
                   onClick={() => {
                     dismissAllTooltips()
-                    handleInstallClick()
+                    onOpenConsole()
                   }}
                   className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors"
-                  aria-label="安装为应用"
+                  aria-label="控制台"
                 >
                   <svg
                     className="w-5 h-5 text-gray-600 dark:text-gray-400"
@@ -136,13 +77,32 @@ export default function Header() {
                     strokeLinejoin="round"
                     viewBox="0 0 24 24"
                   >
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="7 10 12 15 17 10" />
-                    <line x1="12" y1="15" x2="12" y2="3" />
+                    <rect x="3" y="4" width="18" height="14" rx="2" />
+                    <path d="M7 8h4M7 12h2M14 12h3M14 8h3M9 21h6" />
                   </svg>
                 </button>
-                <ViewportTooltip visible={installTooltip.visible} className="whitespace-nowrap">
-                  安装为应用
+                <ViewportTooltip visible={consoleTooltip.visible} className="whitespace-nowrap">
+                  控制台
+                </ViewportTooltip>
+              </div>
+            )}
+            {!onOpenConsole && onOpenAccount && (
+              <div className="relative" {...accountTooltip.handlers}>
+                <button
+                  onClick={() => {
+                    dismissAllTooltips()
+                    onOpenAccount()
+                  }}
+                  className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors"
+                  aria-label="我的账户"
+                >
+                  <svg className="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                    <path d="M20 21a8 8 0 10-16 0" />
+                    <circle cx="12" cy="7" r="4" />
+                  </svg>
+                </button>
+                <ViewportTooltip visible={accountTooltip.visible} className="whitespace-nowrap">
+                  我的账户
                 </ViewportTooltip>
               </div>
             )}
@@ -176,7 +136,7 @@ export default function Header() {
                 操作指南
               </ViewportTooltip>
             </div>
-            <div
+            {user?.role === 'admin' && <div
               className="relative"
               {...settingsTooltip.handlers}
             >
@@ -208,7 +168,15 @@ export default function Header() {
               <ViewportTooltip visible={settingsTooltip.visible} className="whitespace-nowrap">
                 设置
               </ViewportTooltip>
-            </div>
+            </div>}
+            {onLogout && (
+              <button
+                onClick={onLogout}
+                className="rounded-lg px-2.5 py-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-900 dark:hover:text-gray-200"
+              >
+                退出
+              </button>
+            )}
           </div>
         </div>
       </header>
