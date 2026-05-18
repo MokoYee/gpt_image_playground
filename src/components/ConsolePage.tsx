@@ -23,9 +23,9 @@ function formatTime(value: number) {
 
 function Stat({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-xl border border-gray-200/70 bg-white px-5 py-4 shadow-sm dark:border-white/[0.08] dark:bg-white/[0.03]">
+    <div className="rounded-xl border border-gray-200/70 bg-white px-4 py-3 shadow-sm dark:border-white/[0.08] dark:bg-white/[0.03]">
       <div className="text-xs font-medium text-gray-500 dark:text-gray-400">{label}</div>
-      <div className="mt-1 text-2xl font-bold tracking-tight text-gray-900 dark:text-gray-100">{value}</div>
+      <div className="mt-1 text-xl font-bold tracking-tight text-gray-900 dark:text-gray-100">{value}</div>
     </div>
   )
 }
@@ -56,7 +56,7 @@ function NavIcon({ type }: { type: ConsoleTab }) {
 
 function EmptyState({ text }: { text: string }) {
   return (
-    <div className="rounded-xl bg-gray-50 px-4 py-8 text-center text-sm text-gray-500 dark:bg-white/[0.04] dark:text-gray-400">
+    <div className="rounded-xl bg-gray-50 px-4 py-7 text-center text-sm text-gray-500 dark:bg-white/[0.04] dark:text-gray-400">
       {text}
     </div>
   )
@@ -143,32 +143,32 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
 
   return (
     <main className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
-      <header className="safe-area-top sticky top-0 z-40 border-b border-gray-200 bg-white/90 backdrop-blur dark:border-white/[0.08] dark:bg-gray-950/90">
+      <header className="safe-area-top sticky top-0 z-40 border-b border-gray-200 bg-white/80 backdrop-blur dark:border-white/[0.08] dark:bg-gray-950/80">
         <div className="safe-area-x safe-header-inner mx-auto flex max-w-7xl items-center justify-between">
           <div>
-            <h1 className="text-lg font-bold tracking-tight">控制台</h1>
+            <h1 className="text-[17px] font-bold tracking-tight">控制台</h1>
             <p className="text-xs text-gray-500 dark:text-gray-400">用户管理、额度和计费记录</p>
           </div>
-          <button onClick={onClose} className="rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-800 dark:bg-white dark:text-gray-950 dark:hover:bg-gray-200">
+          <button onClick={onClose} className="rounded-xl bg-gray-900 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-gray-800 dark:bg-white dark:text-gray-950 dark:hover:bg-gray-200">
             返回生图
           </button>
         </div>
       </header>
 
-      <div className="safe-area-x mx-auto grid max-w-7xl gap-6 py-6 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="overflow-hidden rounded-2xl border border-gray-200/70 bg-white shadow-sm dark:border-white/[0.08] dark:bg-gray-900">
-          <div className="border-b border-gray-200/70 px-5 py-5 dark:border-white/[0.08]">
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">Workspace</div>
-            <div className="mt-2 text-base font-bold text-gray-900 dark:text-gray-100">Hua Admin</div>
+      <div className="safe-area-x mx-auto grid max-w-7xl items-start gap-5 py-5 lg:grid-cols-[240px_minmax(0,1fr)]">
+        <aside className="self-start overflow-hidden rounded-xl border border-gray-200/70 bg-white shadow-sm dark:border-white/[0.08] dark:bg-gray-900">
+          <div className="border-b border-gray-200/70 px-4 py-4 dark:border-white/[0.08]">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-400">Workspace</div>
+            <div className="mt-1.5 text-sm font-bold text-gray-900 dark:text-gray-100">Hua Admin</div>
           </div>
           {navItems.map((item) => (
             <button
               key={item.key}
               onClick={() => setTab(item.key)}
-              className={`relative flex w-full items-center gap-3 border-b border-gray-100 px-5 py-4 text-left transition last:border-b-0 dark:border-white/[0.06] ${tab === item.key ? 'bg-blue-50/80 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-white/[0.04] dark:hover:text-gray-200'}`}
+              className={`relative flex w-full items-center gap-3 border-b border-gray-100 px-4 py-3 text-left transition last:border-b-0 dark:border-white/[0.06] ${tab === item.key ? 'bg-blue-50/80 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-white/[0.04] dark:hover:text-gray-200'}`}
             >
-              {tab === item.key && <span className="absolute left-0 top-3 bottom-3 w-1 rounded-r-full bg-blue-500" />}
-              <span className={`flex h-9 w-9 items-center justify-center rounded-xl transition ${tab === item.key ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-500 dark:bg-white/[0.06] dark:text-gray-400'}`}>
+              {tab === item.key && <span className="absolute left-0 top-2.5 bottom-2.5 w-1 rounded-r-full bg-blue-500" />}
+              <span className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${tab === item.key ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-500 dark:bg-white/[0.06] dark:text-gray-400'}`}>
                 <NavIcon type={item.key} />
               </span>
               <span className="min-w-0">
@@ -179,11 +179,11 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
           ))}
         </aside>
 
-        <section className="min-w-0 overflow-hidden rounded-2xl border border-gray-200/70 bg-white shadow-sm dark:border-white/[0.08] dark:bg-gray-900">
-          <div className="border-b border-gray-200/70 px-7 py-7 dark:border-white/[0.08]">
+        <section className="min-w-0 overflow-hidden rounded-xl border border-gray-200/70 bg-white shadow-sm dark:border-white/[0.08] dark:bg-gray-900">
+          <div className="border-b border-gray-200/70 px-5 py-5 dark:border-white/[0.08]">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="text-3xl font-bold tracking-tight">
+                <h2 className="text-xl font-bold tracking-tight">
                   {tab === 'users' ? '用户管理' : tab === 'credits' ? '充值记录' : '消费记录'}
                 </h2>
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -191,91 +191,117 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
                 </p>
               </div>
               {tab === 'users' && (
-                <button onClick={() => setShowCreateUser(true)} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700">
+                <button onClick={() => setShowCreateUser(true)} className="rounded-xl bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">
                   创建用户
                 </button>
               )}
             </div>
           </div>
 
-          <div className="grid gap-3 border-b border-gray-200/70 bg-gray-50/60 p-5 dark:border-white/[0.08] dark:bg-white/[0.02] sm:grid-cols-3">
+          <div className="grid gap-3 border-b border-gray-200/70 bg-gray-50/60 p-4 dark:border-white/[0.08] dark:bg-white/[0.02] sm:grid-cols-3">
             <Stat label="用户总数" value={totals.users} />
             <Stat label="启用账号" value={totals.enabled} />
             <Stat label="总 Credits" value={totals.credits} />
           </div>
 
-          {error && <div className="mx-6 mt-5 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600 dark:bg-red-500/10 dark:text-red-300">{error}</div>}
+          {error && <div className="mx-5 mt-4 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600 dark:bg-red-500/10 dark:text-red-300">{error}</div>}
 
           {tab === 'users' && (
-            <div className="overflow-x-auto p-6">
-              <table className="w-full min-w-[980px] text-left text-sm">
-                <thead className="bg-gray-50 text-xs text-gray-500 dark:bg-white/[0.04] dark:text-gray-400">
-                  <tr>
-                    <th className="px-3 py-3">账号</th>
-                    <th className="px-3 py-3">角色</th>
-                    <th className="px-3 py-3">Credits</th>
-                    <th className="px-3 py-3">专属倍率</th>
-                    <th className="px-3 py-3">充值/退款</th>
-                    <th className="px-3 py-3">状态</th>
-                    <th className="px-3 py-3">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map((user) => (
-                    <tr key={user.id} className="border-b border-gray-100 transition last:border-b-0 hover:bg-gray-50/70 dark:border-white/[0.06] dark:hover:bg-white/[0.03]">
-                      <td className="px-3 py-3">
-                        <div className="font-medium text-gray-800 dark:text-gray-100">{user.username}</div>
-                        <div className="text-xs text-gray-500">{user.email}</div>
-                      </td>
-                      <td className="px-3 py-3">{user.role}</td>
-                      <td className="px-3 py-3 font-semibold">{user.credits.toFixed(2)}</td>
-                      <td className="px-3 py-3">
-                        <input
-                          value={user.multiplier}
-                          onChange={(event) => {
-                            updateUser(user.id, { multiplier: Math.max(0, Number(event.target.value) || 0) })
-                            refresh()
-                          }}
-                          className="w-20 rounded-lg border border-gray-200/70 bg-white/60 px-2 py-1.5 text-sm outline-none dark:border-white/[0.08] dark:bg-white/[0.03]"
-                        />
-                      </td>
-                      <td className="px-3 py-3">
-                        <div className="flex items-center gap-2">
-                          <input
-                            value={amountByUser[user.id] ?? '10'}
-                            onChange={(event) => setAmountByUser({ ...amountByUser, [user.id]: event.target.value })}
-                            className="w-20 rounded-lg border border-gray-200/70 bg-white/60 px-2 py-1.5 text-sm outline-none dark:border-white/[0.08] dark:bg-white/[0.03]"
-                          />
-                          <button onClick={() => adjustCredits(user, 'recharge')} className="rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-medium text-blue-600 dark:bg-blue-500/10 dark:text-blue-300">充值</button>
-                          <button onClick={() => adjustCredits(user, 'refund')} className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:bg-white/[0.08] dark:text-gray-200">退款</button>
-                        </div>
-                      </td>
-                      <td className="px-3 py-3">{user.disabled ? '禁用' : '启用'}</td>
-                      <td className="px-3 py-3">
-                        <div className="flex gap-2">
-                          <button onClick={() => { updateUser(user.id, { disabled: !user.disabled }); refresh() }} className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-medium dark:bg-white/[0.08]">
-                            {user.disabled ? '启用' : '禁用'}
-                          </button>
-                          <button disabled={user.id === currentUser.id} onClick={() => { deleteUser(user.id); refresh() }} className="rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-600 disabled:opacity-40 dark:bg-red-500/10 dark:text-red-300">
-                            删除
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="p-5">
+              <div className="overflow-x-auto rounded-xl border border-gray-200/70 dark:border-white/[0.08]">
+                <div className="min-w-[980px]">
+                  <table className="w-full table-fixed text-left text-sm">
+                    <colgroup>
+                      <col className="w-[23%]" />
+                      <col className="w-[9%]" />
+                      <col className="w-[10%]" />
+                      <col className="w-[12%]" />
+                      <col className="w-[24%]" />
+                      <col className="w-[8%]" />
+                      <col className="w-[14%]" />
+                    </colgroup>
+                    <thead className="bg-gray-50 text-xs text-gray-500 dark:bg-gray-900 dark:text-gray-400">
+                      <tr className="shadow-[0_1px_0_rgba(229,231,235,0.9)] dark:shadow-[0_1px_0_rgba(255,255,255,0.08)]">
+                        <th className="px-3 py-2.5">账号</th>
+                        <th className="px-3 py-2.5">角色</th>
+                        <th className="px-3 py-2.5">Credits</th>
+                        <th className="px-3 py-2.5">专属倍率</th>
+                        <th className="px-3 py-2.5">充值/退款</th>
+                        <th className="px-3 py-2.5">状态</th>
+                        <th className="px-3 py-2.5">操作</th>
+                      </tr>
+                    </thead>
+                  </table>
+                  <div className="max-h-[520px] overflow-y-auto">
+                    <table className="w-full table-fixed text-left text-sm">
+                      <colgroup>
+                        <col className="w-[23%]" />
+                        <col className="w-[9%]" />
+                        <col className="w-[10%]" />
+                        <col className="w-[12%]" />
+                        <col className="w-[24%]" />
+                        <col className="w-[8%]" />
+                        <col className="w-[14%]" />
+                      </colgroup>
+                      <tbody>
+                        {users.map((user) => (
+                          <tr key={user.id} className="border-b border-gray-100 transition last:border-b-0 hover:bg-gray-50/70 dark:border-white/[0.06] dark:hover:bg-white/[0.03]">
+                            <td className="px-3 py-2.5">
+                              <div className="font-medium text-gray-800 dark:text-gray-100">{user.username}</div>
+                              <div className="text-xs text-gray-500">{user.email}</div>
+                            </td>
+                            <td className="px-3 py-2.5">{user.role}</td>
+                            <td className="px-3 py-2.5 font-semibold">{user.credits.toFixed(2)}</td>
+                            <td className="px-3 py-2.5">
+                              <input
+                                value={user.multiplier}
+                                onChange={(event) => {
+                                  updateUser(user.id, { multiplier: Math.max(0, Number(event.target.value) || 0) })
+                                  refresh()
+                                }}
+                                className="w-20 rounded-lg border border-gray-200/70 bg-white px-2 py-1.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]"
+                              />
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  value={amountByUser[user.id] ?? '10'}
+                                  onChange={(event) => setAmountByUser({ ...amountByUser, [user.id]: event.target.value })}
+                                  className="w-20 rounded-lg border border-gray-200/70 bg-white px-2 py-1.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]"
+                                />
+                                <button onClick={() => adjustCredits(user, 'recharge')} className="rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-medium text-blue-600 dark:bg-blue-500/10 dark:text-blue-300">充值</button>
+                                <button onClick={() => adjustCredits(user, 'refund')} className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:bg-white/[0.08] dark:text-gray-200">退款</button>
+                              </div>
+                            </td>
+                            <td className="px-3 py-2.5">{user.disabled ? '禁用' : '启用'}</td>
+                            <td className="px-3 py-2.5">
+                              <div className="flex gap-2">
+                                <button onClick={() => { updateUser(user.id, { disabled: !user.disabled }); refresh() }} className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-medium dark:bg-white/[0.08]">
+                                  {user.disabled ? '启用' : '禁用'}
+                                </button>
+                                <button disabled={user.id === currentUser.id} onClick={() => { deleteUser(user.id); refresh() }} className="rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-600 disabled:opacity-40 dark:bg-red-500/10 dark:text-red-300">
+                                  删除
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
           {tab === 'credits' && (
-            <div className="p-6">
+            <div className="p-5">
               {creditRecords.length === 0 ? <EmptyState text="暂无充值或退款记录" /> : (
-                <div className="grid gap-2">
+                <div className="grid max-h-[520px] gap-2 overflow-auto pr-1">
                   {creditRecords.map((record) => {
                     const user = users.find((item) => item.id === record.userId)
                     return (
-                      <div key={record.id} className="grid gap-2 rounded-xl border border-gray-100 bg-white/60 px-4 py-3 text-sm dark:border-white/[0.06] dark:bg-white/[0.03] sm:grid-cols-[1fr_auto_auto] sm:items-center">
+                      <div key={record.id} className="grid gap-2 rounded-xl border border-gray-100 bg-white px-3.5 py-3 text-sm shadow-sm dark:border-white/[0.06] dark:bg-white/[0.03] sm:grid-cols-[1fr_auto_auto] sm:items-center">
                         <div>
                           <div className="font-medium text-gray-800 dark:text-gray-100">{user?.username ?? '未知用户'} · {record.type === 'recharge' ? '充值' : '退款'} {record.amount} Credits</div>
                           <div className="mt-0.5 text-xs text-gray-500">管理员：{record.operatorUsername}</div>
@@ -293,13 +319,13 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
           )}
 
           {tab === 'usage' && (
-            <div className="p-6">
+            <div className="p-5">
               {usageRecords.length === 0 ? <EmptyState text="暂无消费记录" /> : (
-                <div className="grid gap-2">
+                <div className="grid max-h-[520px] gap-2 overflow-auto pr-1">
                   {usageRecords.map((record) => {
                     const user = users.find((item) => item.id === record.userId)
                     return (
-                      <div key={record.id} className="rounded-xl border border-gray-100 bg-white/60 px-4 py-3 text-sm dark:border-white/[0.06] dark:bg-white/[0.03]">
+                      <div key={record.id} className="rounded-xl border border-gray-100 bg-white px-3.5 py-3 text-sm shadow-sm dark:border-white/[0.06] dark:bg-white/[0.03]">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <div className="font-medium text-gray-800 dark:text-gray-100">{user?.username ?? '未知用户'} 消耗 {record.totalCredits} Credits</div>
                           <div className="text-xs text-gray-500">{formatTime(record.createdAt)}</div>
@@ -318,27 +344,27 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
 
       {showCreateUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm animate-overlay-in">
-          <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-gray-200/70 bg-white shadow-xl animate-confirm-in dark:border-white/[0.08] dark:bg-gray-900">
-            <div className="border-b border-gray-200/70 px-6 py-5 dark:border-white/[0.08]">
+          <div className="w-full max-w-lg overflow-hidden rounded-xl border border-gray-200/70 bg-white shadow-xl animate-confirm-in dark:border-white/[0.08] dark:bg-gray-900">
+            <div className="border-b border-gray-200/70 px-5 py-4 dark:border-white/[0.08]">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-xl font-bold tracking-tight">创建用户</h3>
+                  <h3 className="text-lg font-bold tracking-tight">创建用户</h3>
                   <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">设置账号信息、角色、默认额度和专属倍率。</p>
                 </div>
                 <button onClick={() => setShowCreateUser(false)} className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-white/[0.08] dark:hover:text-gray-200">×</button>
               </div>
             </div>
-            <div className="grid gap-3 px-6 py-5">
-              <input value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} placeholder="用户名" className="rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 text-sm outline-none focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03]" />
-              <input value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="邮箱" className="rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 text-sm outline-none focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03]" />
-              <input value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} placeholder="密码" className="rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 text-sm outline-none focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03]" />
+            <div className="grid gap-3 px-5 py-4">
+              <input value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} placeholder="用户名" className="rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
+              <input value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="邮箱" className="rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
+              <input value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} placeholder="密码" className="rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
               <div className="grid gap-2 sm:grid-cols-2">
                 {(['user', 'admin'] as UserRole[]).map((role) => (
                   <button
                     key={role}
                     type="button"
                     onClick={() => setForm({ ...form, role })}
-                    className={`rounded-xl border px-4 py-3 text-left transition ${form.role === role ? 'border-blue-300 bg-blue-50 text-blue-700 shadow-sm dark:border-blue-500/50 dark:bg-blue-500/10 dark:text-blue-300' : 'border-gray-200/70 bg-white/60 text-gray-600 hover:border-gray-300 hover:bg-gray-50 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-300 dark:hover:bg-white/[0.06]'}`}
+                    className={`rounded-xl border px-3 py-2.5 text-left transition ${form.role === role ? 'border-blue-300 bg-blue-50 text-blue-700 shadow-sm dark:border-blue-500/50 dark:bg-blue-500/10 dark:text-blue-300' : 'border-gray-200/70 bg-white text-gray-600 shadow-sm hover:border-gray-300 hover:bg-gray-50 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-300 dark:hover:bg-white/[0.06]'}`}
                   >
                     <span className="block text-sm font-semibold">{role}</span>
                     <span className="mt-1 block text-xs opacity-75">{role === 'admin' ? '可进入控制台和全局设置' : '仅可生图和查看个人记录'}</span>
@@ -346,13 +372,13 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
                 ))}
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <input value={form.credits} onChange={(event) => setForm({ ...form, credits: event.target.value })} placeholder="Credits" className="rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 text-sm outline-none dark:border-white/[0.08] dark:bg-white/[0.03]" />
-                <input value={form.multiplier} onChange={(event) => setForm({ ...form, multiplier: event.target.value })} placeholder="倍率" className="rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 text-sm outline-none dark:border-white/[0.08] dark:bg-white/[0.03]" />
+                <input value={form.credits} onChange={(event) => setForm({ ...form, credits: event.target.value })} placeholder="Credits" className="rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
+                <input value={form.multiplier} onChange={(event) => setForm({ ...form, multiplier: event.target.value })} placeholder="倍率" className="rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
               </div>
               {error && <div className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600 dark:bg-red-500/10 dark:text-red-300">{error}</div>}
               <div className="mt-2 flex justify-end gap-2 border-t border-gray-100 pt-4 dark:border-white/[0.06]">
-                <button onClick={() => setShowCreateUser(false)} className="rounded-xl bg-gray-100 px-4 py-2.5 text-sm font-medium text-gray-700 dark:bg-white/[0.08] dark:text-gray-200">取消</button>
-                <button onClick={handleCreateUser} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700">创建</button>
+                <button onClick={() => setShowCreateUser(false)} className="rounded-xl bg-gray-100 px-3.5 py-2 text-sm font-medium text-gray-700 dark:bg-white/[0.08] dark:text-gray-200">取消</button>
+                <button onClick={handleCreateUser} className="rounded-xl bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">创建</button>
               </div>
             </div>
           </div>
