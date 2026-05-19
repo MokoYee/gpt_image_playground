@@ -53,6 +53,7 @@ const MAX_THUMBNAIL_CACHE_ENTRIES = 80
 const MAX_THUMBNAIL_BACKFILL_CONCURRENT = 4
 const CUSTOM_RECOVERY_POLL_MS = 10_000
 const SUPPORT_PROMPT_IMAGE_THRESHOLD = 50
+const SERVER_TASK_ORPHAN_TIMEOUT_MS = 5 * 60 * 1000
 const customRecoveryTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const openAIWatchdogTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const serverTaskPollTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -183,6 +184,35 @@ async function upsertServerTask(serverTask: ServerImageTask) {
   return localTask
 }
 
+async function markOrphanedServerTasksFailed(serverTasks: ServerImageTask[]) {
+  const sessionUser = readAuthSession()?.user
+  if (!sessionUser) return
+  const serverTaskIds = new Set(serverTasks.map((task) => task.id))
+  const serverLocalTaskIds = new Set(serverTasks.map((task) => task.localTaskId).filter((id): id is string => Boolean(id)))
+  const now = Date.now()
+  const previousTasks = useStore.getState().tasks
+  const nextTasks = previousTasks.map((task) => {
+    if (task.ownerUserId && task.ownerUserId !== sessionUser.id) return task
+    if (task.status !== 'queued' && task.status !== 'running') return task
+    if (task.serverTaskId && serverTaskIds.has(task.serverTaskId)) return task
+    if (serverLocalTaskIds.has(task.id)) return task
+    if (now - task.createdAt < SERVER_TASK_ORPHAN_TIMEOUT_MS) return task
+    return {
+      ...task,
+      status: 'error' as const,
+      error: task.serverTaskId ? '任务状态同步失败，请刷新后重试' : '任务未能提交到后台，请重新生成',
+      finishedAt: now,
+      elapsed: now - task.createdAt,
+      queuePosition: null,
+    }
+  })
+  useStore.getState().setTasks(nextTasks)
+  await Promise.all(nextTasks.map(async (task, index) => {
+    const previous = previousTasks[index]
+    if (previous !== task) await putTask(task)
+  }))
+}
+
 function clearServerTaskPoll(taskId: string) {
   const timer = serverTaskPollTimers.get(taskId)
   if (timer) clearTimeout(timer)
@@ -232,6 +262,7 @@ export async function syncServerHistory() {
     await upsertServerTask(serverTask)
     if (serverTask.status === 'queued' || serverTask.status === 'running') scheduleServerTaskPoll(serverTask.id)
   }
+  await markOrphanedServerTasksFailed(serverTasks)
 }
 
 export async function cancelQueuedTask(task: TaskRecord) {
@@ -1104,6 +1135,9 @@ export async function initStore() {
   }
   showSupportPromptForExistingLocalData(tasks)
   for (const task of tasks) {
+    if (readAuthSession() && task.serverTaskId && (task.status === 'queued' || task.status === 'running')) {
+      scheduleServerTaskPoll(task.serverTaskId, 0)
+    }
     if (
       task.customTaskId &&
       (task.status === 'running' || task.customRecoverable)
