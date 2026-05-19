@@ -2,9 +2,11 @@ import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape'
 import { usePreventBackgroundScroll } from '../hooks/usePreventBackgroundScroll'
+import { DEFAULT_APP_NAME } from '../lib/auth'
 
 interface HelpModalProps {
   onClose: () => void
+  appName?: string
 }
 
 function useIsMobile() {
@@ -17,7 +19,7 @@ function useIsMobile() {
   return isMobile
 }
 
-export default function HelpModal({ onClose }: HelpModalProps) {
+export default function HelpModal({ onClose, appName = DEFAULT_APP_NAME }: HelpModalProps) {
   const isMobile = useIsMobile()
   const modalRef = useRef<HTMLDivElement>(null)
   useCloseOnEscape(true, onClose)
@@ -118,7 +120,7 @@ export default function HelpModal({ onClose }: HelpModalProps) {
 
         <div className="pt-4 border-t border-gray-200 dark:border-white/[0.08] flex justify-center">
           <span className="text-sm font-medium text-gray-500 dark:text-gray-400">
-            Hua Image Playground
+            {appName}
           </span>
         </div>
       </div>

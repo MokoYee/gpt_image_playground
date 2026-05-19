@@ -9,30 +9,29 @@ import {
   readUsageRecords,
   listUsers,
   updateAuthSettings,
-  updateImageApiSettings,
   updateModelProfiles,
   updateQueueSettings,
+  updateSiteSettings,
   updateUser,
 } from '../lib/auth'
-import type { AppUser, AuditLog, CreditRecord, ModelProfile, SystemSettings, UsageRecord, UsageRecordFilters, UserRole } from '../lib/auth'
+import type { AppUser, AuditLog, CreditRecord, ModelProfile, SystemSettings, UsageRecord, UsageRecordFilters } from '../lib/auth'
 import { createProtectedImageLink, fetchProtectedImageDataUrl } from '../lib/api'
 
 interface ConsolePageProps {
   currentUser: AppUser
+  appName: string
+  onAppNameChange?: (appName: string) => void
   onClose: () => void
 }
 
 type ConsoleTab = 'users' | 'credits' | 'usage' | 'settings' | 'audit'
+type ModelApiMode = ModelProfile['apiMode']
 
 const EMPTY_SETTINGS_DRAFT = {
+  appName: '',
   registrationOpen: true,
   defaultCredits: '',
   defaultMultiplier: '',
-  baseUrl: '',
-  apiKey: '',
-  model: '',
-  apiMode: 'images' as SystemSettings['imageApi']['apiMode'],
-  timeoutSeconds: '',
   globalConcurrency: '',
   defaultUserConcurrency: '',
   maxQueueSize: '',
@@ -42,10 +41,32 @@ const EMPTY_CREATE_USER_FORM = {
   username: '',
   email: '',
   password: '',
-  role: 'user' as UserRole,
   credits: '',
   multiplier: '',
   concurrencyLimit: '',
+}
+
+const EMPTY_EDIT_USER_FORM = {
+  multiplier: '',
+  concurrencyLimit: '',
+  note: '',
+  password: '',
+  disabled: false,
+}
+
+const EMPTY_CREDIT_FORM = {
+  amount: '',
+}
+
+const DEFAULT_MODEL_DRAFT: ModelProfile = {
+  name: '默认模型',
+  provider: 'openai-compatible',
+  baseUrl: 'https://api.openai.com/v1',
+  model: 'gpt-image-2',
+  apiMode: 'images',
+  timeoutSeconds: 120,
+  enabled: true,
+  isDefault: true,
 }
 
 const EMPTY_USAGE_FILTERS = {
@@ -60,6 +81,10 @@ const EMPTY_USAGE_FILTERS = {
 
 function formatTime(value: number) {
   return new Date(value).toLocaleString()
+}
+
+function formatOptionalTime(value?: number | null) {
+  return value ? formatTime(value) : '-'
 }
 
 function Stat({ label, value }: { label: string; value: string | number }) {
@@ -140,7 +165,15 @@ function ProtectedImage({ fileId }: { fileId: string }) {
   return <img src={src} className="h-full w-full object-cover" alt="" />
 }
 
-export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) {
+function generatePassword() {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
+  const bytes = new Uint8Array(12)
+  window.crypto.getRandomValues(bytes)
+  const randomPart = Array.from(bytes, (value) => alphabet[value % alphabet.length]).join('')
+  return `${randomPart}A1`
+}
+
+export default function ConsolePage({ currentUser, appName, onAppNameChange, onClose }: ConsolePageProps) {
   const [tab, setTab] = useState<ConsoleTab>('users')
   const [users, setUsers] = useState<AppUser[]>([])
   const [creditRecords, setCreditRecords] = useState<CreditRecord[]>([])
@@ -150,8 +183,10 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
   const [modelDrafts, setModelDrafts] = useState<ModelProfile[]>([])
   const [settingsDraft, setSettingsDraft] = useState(EMPTY_SETTINGS_DRAFT)
   const [showCreateUser, setShowCreateUser] = useState(false)
-  const [amountByUser, setAmountByUser] = useState<Record<string, string>>({})
-  const [userDrafts, setUserDrafts] = useState<Record<string, { multiplier: string; concurrencyLimit: string }>>({})
+  const [editingUser, setEditingUser] = useState<AppUser | null>(null)
+  const [editUserForm, setEditUserForm] = useState(EMPTY_EDIT_USER_FORM)
+  const [creditTarget, setCreditTarget] = useState<{ user: AppUser; type: 'recharge' | 'refund' } | null>(null)
+  const [creditForm, setCreditForm] = useState(EMPTY_CREDIT_FORM)
   const [usageFilters, setUsageFilters] = useState(EMPTY_USAGE_FILTERS)
   const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState(EMPTY_CREATE_USER_FORM)
@@ -181,10 +216,6 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
         readAuditLogs(),
       ])
       setUsers(nextUsers)
-      setUserDrafts(Object.fromEntries(nextUsers.map((user) => [user.id, {
-        multiplier: String(user.multiplier),
-        concurrencyLimit: user.concurrencyLimit == null ? '' : String(user.concurrencyLimit),
-      }])))
       setCreditRecords(nextCreditRecords)
       setUsageRecords(nextUsageRecords)
       setAuditLogs(nextAuditLogs)
@@ -196,25 +227,12 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
   const refreshSettings = async () => {
     const settings = await readSystemSettings()
     setSystemSettings(settings)
-    setModelDrafts(settings.models?.length ? settings.models : [{
-      name: '默认模型',
-      provider: 'openai-compatible',
-      baseUrl: settings.imageApi.baseUrl,
-      model: settings.imageApi.model,
-      apiMode: settings.imageApi.apiMode,
-      timeoutSeconds: settings.imageApi.timeoutSeconds,
-      enabled: true,
-      isDefault: true,
-    }])
+    setModelDrafts(settings.models?.length ? settings.models : [DEFAULT_MODEL_DRAFT])
     setSettingsDraft({
+      appName: settings.site.appName,
       registrationOpen: settings.auth.registrationOpen,
       defaultCredits: String(settings.auth.defaultCredits),
       defaultMultiplier: String(settings.auth.defaultMultiplier),
-      baseUrl: settings.imageApi.baseUrl,
-      apiKey: '',
-      model: settings.imageApi.model,
-      apiMode: settings.imageApi.apiMode,
-      timeoutSeconds: String(settings.imageApi.timeoutSeconds),
       globalConcurrency: String(settings.queue.globalConcurrency),
       defaultUserConcurrency: String(settings.queue.defaultUserConcurrency),
       maxQueueSize: String(settings.queue.maxQueueSize),
@@ -259,7 +277,6 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
       username: form.username,
       email: form.email,
       password: form.password,
-      role: form.role,
       credits,
       multiplier,
       concurrencyLimit,
@@ -278,23 +295,23 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
     await refresh()
   }
 
-  const adjustCredits = async (user: AppUser, type: 'recharge' | 'refund') => {
+  const openEditUser = (user: AppUser) => {
     setError(null)
-    const value = Number(amountByUser[user.id] ?? '')
-    if (!Number.isFinite(value) || value <= 0) {
-      setError('请输入大于 0 的金额')
-      return
-    }
-    await adjustUserCredits(user.id, value, type)
-    await refresh()
+    setEditingUser(user)
+    setEditUserForm({
+      multiplier: String(user.multiplier),
+      concurrencyLimit: user.concurrencyLimit == null ? '' : String(user.concurrencyLimit),
+      note: user.note ?? '',
+      password: '',
+      disabled: user.disabled,
+    })
   }
 
-  const saveUserDraft = async (user: AppUser) => {
+  const saveEditingUser = async () => {
+    if (!editingUser) return
     setError(null)
-    const draft = userDrafts[user.id]
-    if (!draft) return
-    const multiplier = Number(draft.multiplier)
-    const concurrencyLimit = draft.concurrencyLimit.trim() ? Number(draft.concurrencyLimit) : null
+    const multiplier = Number(editUserForm.multiplier)
+    const concurrencyLimit = editUserForm.concurrencyLimit.trim() ? Number(editUserForm.concurrencyLimit) : null
     if (!Number.isFinite(multiplier) || multiplier < 0) {
       setError('专属倍率必须是非负数字，允许填写 0.2 这类小数')
       return
@@ -303,9 +320,52 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
       setError('专属并发必须是大于 0 的整数')
       return
     }
-    if (multiplier === user.multiplier && concurrencyLimit === (user.concurrencyLimit ?? null)) return
-    await updateUser(user.id, { multiplier, concurrencyLimit })
+    const password = editUserForm.password
+    if (password && (password.length < 8 || password.length > 72 || !/[A-Za-z]/.test(password) || !/\d/.test(password) || /\s/.test(password))) {
+      setError('新密码需为 8-72 位，包含字母和数字，且不能包含空格')
+      return
+    }
+    await updateUser(editingUser.id, {
+      multiplier,
+      concurrencyLimit,
+      note: editUserForm.note.trim(),
+      disabled: editUserForm.disabled,
+      ...(password ? { password } : {}),
+    })
+    setEditingUser(null)
     await refresh()
+  }
+
+  const openCreditDialog = (user: AppUser, type: 'recharge' | 'refund') => {
+    setError(null)
+    setCreditTarget({ user, type })
+    setCreditForm(EMPTY_CREDIT_FORM)
+  }
+
+  const submitCreditDialog = async () => {
+    if (!creditTarget) return
+    setError(null)
+    const value = Number(creditForm.amount)
+    if (!Number.isFinite(value) || value <= 0) {
+      setError('请输入大于 0 的金额')
+      return
+    }
+    await adjustUserCredits(creditTarget.user.id, value, creditTarget.type)
+    setCreditTarget(null)
+    await refresh()
+  }
+
+  const saveSiteSettings = async () => {
+    setError(null)
+    const nextName = settingsDraft.appName.trim()
+    if (!nextName) {
+      setError('系统名称不能为空')
+      return
+    }
+    const settings = await updateSiteSettings({ appName: nextName })
+    setSystemSettings(settings)
+    setSettingsDraft((draft) => ({ ...draft, appName: settings.site.appName }))
+    onAppNameChange?.(settings.site.appName)
   }
 
   const saveAuthSettings = async () => {
@@ -326,25 +386,6 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
       defaultMultiplier,
     })
     setSystemSettings(settings)
-  }
-
-  const saveImageApiSettings = async () => {
-    setError(null)
-    const timeoutSeconds = Number(settingsDraft.timeoutSeconds)
-    if (!Number.isFinite(timeoutSeconds) || timeoutSeconds < 10 || timeoutSeconds > 900) {
-      setError('请求超时必须在 10 到 900 秒之间')
-      return
-    }
-    const settings = await updateImageApiSettings({
-      provider: 'openai-compatible',
-      baseUrl: settingsDraft.baseUrl.trim(),
-      ...(settingsDraft.apiKey.trim() ? { apiKey: settingsDraft.apiKey.trim() } : {}),
-      model: settingsDraft.model.trim(),
-      apiMode: settingsDraft.apiMode,
-      timeoutSeconds,
-    })
-    setSystemSettings(settings)
-    setSettingsDraft((draft) => ({ ...draft, apiKey: '' }))
   }
 
   const saveQueueSettings = async () => {
@@ -391,7 +432,7 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
     { key: 'users', label: '用户管理', desc: '账号、额度、倍率' },
     { key: 'credits', label: '充值记录', desc: '充值和退款流水' },
     { key: 'usage', label: '消费记录', desc: '生图扣费明细' },
-    { key: 'settings', label: '系统设置', desc: '注册、上游 API、存储' },
+    { key: 'settings', label: '系统设置', desc: '注册、模型服务、存储' },
     { key: 'audit', label: '审计日志', desc: '关键操作记录' },
   ]
 
@@ -441,7 +482,7 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
                   {tab === 'users' ? '用户管理' : tab === 'credits' ? '充值记录' : tab === 'usage' ? '消费记录' : tab === 'audit' ? '审计日志' : '系统设置'}
                 </h2>
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  {tab === 'users' ? '创建、禁用用户，并直接在表格中调整额度与倍率。' : tab === 'credits' ? '查看每次充值和退款的时间、金额、管理员操作账号。' : tab === 'usage' ? '查看用户生图扣费、倍率和质量明细。' : tab === 'audit' ? '查看关键管理操作和任务操作记录。' : '配置开放注册、默认额度、模型服务和存储选项。'}
+                  {tab === 'users' ? '创建用户，查看账号信息，并通过弹窗调整用户配置。' : tab === 'credits' ? '查看每次充值和退款的时间、金额、管理员操作账号。' : tab === 'usage' ? '查看用户生图扣费、倍率和质量明细。' : tab === 'audit' ? '查看关键管理操作和任务操作记录。' : '配置系统名称、开放注册、默认额度和模型服务。'}
                 </p>
               </div>
               {tab === 'users' && (
@@ -463,27 +504,35 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
           {tab === 'users' && (
             <div className="p-5">
               <div className="overflow-x-auto rounded-xl border border-gray-200/70 dark:border-white/[0.08]">
-                <div className="min-w-[980px]">
+                <div className="min-w-[1280px]">
                   <table className="w-full table-fixed text-left text-sm">
                     <colgroup>
-                      <col className="w-[20%]" />
-                      <col className="w-[9%]" />
-                      <col className="w-[10%]" />
-                      <col className="w-[10%]" />
-                      <col className="w-[10%]" />
-                      <col className="w-[20%]" />
+                      <col className="w-[17%]" />
+                      <col className="w-[6%]" />
+                      <col className="w-[6%]" />
                       <col className="w-[8%]" />
-                      <col className="w-[13%]" />
+                      <col className="w-[7%]" />
+                      <col className="w-[7%]" />
+                      <col className="w-[12%]" />
+                      <col className="w-[12%]" />
+                      <col className="w-[12%]" />
+                      <col className="w-[9%]" />
+                      <col className="w-[11%]" />
+                      <col className="w-[6%]" />
                     </colgroup>
                     <thead className="bg-gray-50 text-xs text-gray-500 dark:bg-gray-900 dark:text-gray-400">
                       <tr className="shadow-[0_1px_0_rgba(229,231,235,0.9)] dark:shadow-[0_1px_0_rgba(255,255,255,0.08)]">
                         <th className="px-3 py-2.5">账号</th>
                         <th className="px-3 py-2.5">角色</th>
+                        <th className="px-3 py-2.5">状态</th>
                         <th className="px-3 py-2.5">Credits</th>
                         <th className="px-3 py-2.5">专属倍率</th>
                         <th className="px-3 py-2.5">专属并发</th>
-                        <th className="px-3 py-2.5">充值/退款</th>
-                        <th className="px-3 py-2.5">状态</th>
+                        <th className="px-3 py-2.5">最后登录</th>
+                        <th className="px-3 py-2.5">最后活跃</th>
+                        <th className="px-3 py-2.5">最后使用</th>
+                        <th className="px-3 py-2.5">备注</th>
+                        <th className="px-3 py-2.5">创建时间</th>
                         <th className="px-3 py-2.5">操作</th>
                       </tr>
                     </thead>
@@ -491,14 +540,18 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
                   <div className="max-h-[520px] overflow-y-auto">
                     <table className="w-full table-fixed text-left text-sm">
                       <colgroup>
-                        <col className="w-[20%]" />
-                        <col className="w-[9%]" />
-                        <col className="w-[10%]" />
-                        <col className="w-[10%]" />
-                        <col className="w-[10%]" />
-                        <col className="w-[20%]" />
+                        <col className="w-[17%]" />
+                        <col className="w-[6%]" />
+                        <col className="w-[6%]" />
                         <col className="w-[8%]" />
-                        <col className="w-[13%]" />
+                        <col className="w-[7%]" />
+                        <col className="w-[7%]" />
+                        <col className="w-[12%]" />
+                        <col className="w-[12%]" />
+                        <col className="w-[12%]" />
+                        <col className="w-[9%]" />
+                        <col className="w-[11%]" />
+                        <col className="w-[6%]" />
                       </colgroup>
                       <tbody>
                         {users.map((user) => (
@@ -508,52 +561,25 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
                               <div className="text-xs text-gray-500">{user.email}</div>
                             </td>
                             <td className="px-3 py-2.5">{user.role}</td>
+                            <td className="px-3 py-2.5">
+                              <span className={`rounded-lg px-2.5 py-1 text-xs font-medium ${user.disabled ? 'bg-gray-100 text-gray-600 dark:bg-white/[0.08] dark:text-gray-300' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'}`}>
+                                {user.disabled ? '禁用' : '启用'}
+                              </span>
+                            </td>
                             <td className="px-3 py-2.5 font-semibold">{user.credits.toFixed(2)}</td>
+                            <td className="px-3 py-2.5">{user.multiplier}</td>
+                            <td className="px-3 py-2.5">{user.concurrencyLimit ?? '默认'}</td>
+                            <td className="px-3 py-2.5 text-xs text-gray-500">{formatOptionalTime(user.lastLoginAt)}</td>
+                            <td className="px-3 py-2.5 text-xs text-gray-500">{formatOptionalTime(user.lastActiveAt)}</td>
+                            <td className="px-3 py-2.5 text-xs text-gray-500">{formatOptionalTime(user.lastUsedAt)}</td>
                             <td className="px-3 py-2.5">
-                              <input
-                                value={userDrafts[user.id]?.multiplier ?? String(user.multiplier)}
-                                onChange={(event) => setUserDrafts((drafts) => ({
-                                  ...drafts,
-                                  [user.id]: { multiplier: event.target.value, concurrencyLimit: drafts[user.id]?.concurrencyLimit ?? (user.concurrencyLimit == null ? '' : String(user.concurrencyLimit)) },
-                                }))}
-                                onBlur={() => { void saveUserDraft(user) }}
-                                className="w-20 rounded-lg border border-gray-200/70 bg-white px-2 py-1.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]"
-                              />
+                              <div className="truncate text-xs text-gray-500" title={user.note || ''}>{user.note || '-'}</div>
                             </td>
+                            <td className="px-3 py-2.5 text-xs text-gray-500">{formatTime(user.createdAt)}</td>
                             <td className="px-3 py-2.5">
-                              <input
-                                value={userDrafts[user.id]?.concurrencyLimit ?? (user.concurrencyLimit ?? '')}
-                                placeholder="默认"
-                                onChange={(event) => setUserDrafts((drafts) => ({
-                                  ...drafts,
-                                  [user.id]: { multiplier: drafts[user.id]?.multiplier ?? String(user.multiplier), concurrencyLimit: event.target.value },
-                                }))}
-                                onBlur={() => { void saveUserDraft(user) }}
-                                className="w-20 rounded-lg border border-gray-200/70 bg-white px-2 py-1.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]"
-                              />
-                            </td>
-                            <td className="px-3 py-2.5">
-                              <div className="flex items-center gap-2">
-                                <input
-                                  value={amountByUser[user.id] ?? ''}
-                                  onChange={(event) => setAmountByUser({ ...amountByUser, [user.id]: event.target.value })}
-                                  placeholder="金额"
-                                  className="w-20 rounded-lg border border-gray-200/70 bg-white px-2 py-1.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]"
-                                />
-                                <button onClick={() => adjustCredits(user, 'recharge')} className="rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-medium text-blue-600 dark:bg-blue-500/10 dark:text-blue-300">充值</button>
-                                <button onClick={() => adjustCredits(user, 'refund')} className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:bg-white/[0.08] dark:text-gray-200">退款</button>
-                              </div>
-                            </td>
-                            <td className="px-3 py-2.5">{user.disabled ? '禁用' : '启用'}</td>
-                            <td className="px-3 py-2.5">
-                              <div className="flex gap-2">
-                                <button onClick={() => { void updateUser(user.id, { disabled: !user.disabled }).then(refresh) }} className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-medium dark:bg-white/[0.08]">
-                                  {user.disabled ? '启用' : '禁用'}
-                                </button>
-                                <button disabled={user.id === currentUser.id} onClick={() => { void deleteUser(user.id).then(refresh) }} className="rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-600 disabled:opacity-40 dark:bg-red-500/10 dark:text-red-300">
-                                  删除
-                                </button>
-                              </div>
+                              <button onClick={() => openEditUser(user)} className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:bg-white/[0.08] dark:text-gray-200">
+                                编辑
+                              </button>
                             </td>
                           </tr>
                         ))}
@@ -704,6 +730,17 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
 
           {tab === 'settings' && (
             <div className="grid gap-4 p-5 lg:grid-cols-2">
+              <section className="rounded-xl border border-gray-200/70 p-4 dark:border-white/[0.08] lg:col-span-2">
+                <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">基础信息</h3>
+                <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">系统名称</span>
+                    <input value={settingsDraft.appName} onChange={(event) => setSettingsDraft({ ...settingsDraft, appName: event.target.value })} placeholder={appName} className="w-full rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
+                  </label>
+                  <button onClick={saveSiteSettings} className="rounded-xl bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">保存基础信息</button>
+                </div>
+              </section>
+
               <section className="rounded-xl border border-gray-200/70 p-4 dark:border-white/[0.08]">
                 <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">安全与注册</h3>
                 <div className="mt-4 space-y-4">
@@ -730,38 +767,6 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
                     </label>
                   </div>
                   <button onClick={saveAuthSettings} className="rounded-xl bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">保存注册设置</button>
-                </div>
-              </section>
-
-              <section className="rounded-xl border border-gray-200/70 p-4 dark:border-white/[0.08]">
-                <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">上游 API</h3>
-                <div className="mt-4 space-y-3">
-                  <label className="block">
-                    <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">API URL</span>
-                    <input value={settingsDraft.baseUrl} onChange={(event) => setSettingsDraft({ ...settingsDraft, baseUrl: event.target.value })} placeholder="https://api.openai.com/v1" className="w-full rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
-                  </label>
-                  <label className="block">
-                    <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">API Key</span>
-                    <input value={settingsDraft.apiKey} onChange={(event) => setSettingsDraft({ ...settingsDraft, apiKey: event.target.value })} type="password" placeholder="留空保持不变" className="w-full rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
-                  </label>
-                  <div className="grid gap-3 sm:grid-cols-[1fr_140px_110px]">
-                    <label className="block">
-                      <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">模型 ID</span>
-                      <input value={settingsDraft.model} onChange={(event) => setSettingsDraft({ ...settingsDraft, model: event.target.value })} className="w-full rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
-                    </label>
-                    <label className="block">
-                      <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">接口模式</span>
-                      <select value={settingsDraft.apiMode} onChange={(event) => setSettingsDraft({ ...settingsDraft, apiMode: event.target.value as SystemSettings['imageApi']['apiMode'] })} className="w-full rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]">
-                        <option value="images">Images</option>
-                        <option value="responses">Responses</option>
-                      </select>
-                    </label>
-                    <label className="block">
-                      <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">超时秒</span>
-                      <input value={settingsDraft.timeoutSeconds} onChange={(event) => setSettingsDraft({ ...settingsDraft, timeoutSeconds: event.target.value })} className="w-full rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
-                    </label>
-                  </div>
-                  <button onClick={saveImageApiSettings} className="rounded-xl bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">保存 API 设置</button>
                 </div>
               </section>
 
@@ -797,7 +802,7 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
                       </div>
                       <div className="grid gap-2 md:grid-cols-[1fr_140px_120px_120px_auto]">
                         <input value={model.apiKey ?? ''} onChange={(event) => setModelDrafts((items) => items.map((item, i) => i === index ? { ...item, apiKey: event.target.value } : item))} type="password" placeholder="API Key，留空保持原值" className="rounded-xl border border-gray-200/70 bg-white px-3 py-2 text-sm outline-none dark:border-white/[0.08] dark:bg-white/[0.03]" />
-                        <select value={model.apiMode} onChange={(event) => setModelDrafts((items) => items.map((item, i) => i === index ? { ...item, apiMode: event.target.value as SystemSettings['imageApi']['apiMode'] } : item))} className="rounded-xl border border-gray-200/70 bg-white px-3 py-2 text-sm outline-none dark:border-white/[0.08] dark:bg-white/[0.03]">
+                        <select value={model.apiMode} onChange={(event) => setModelDrafts((items) => items.map((item, i) => i === index ? { ...item, apiMode: event.target.value as ModelApiMode } : item))} className="rounded-xl border border-gray-200/70 bg-white px-3 py-2 text-sm outline-none dark:border-white/[0.08] dark:bg-white/[0.03]">
                           <option value="images">Images</option>
                           <option value="responses">Responses</option>
                         </select>
@@ -809,7 +814,7 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
                   ))}
                 </div>
                 <div className="mt-4 flex gap-2">
-                  <button onClick={() => setModelDrafts((items) => [...items, { name: '新模型', provider: 'openai-compatible', baseUrl: 'https://api.openai.com/v1', model: 'gpt-image-2', apiMode: 'images', timeoutSeconds: 120, enabled: true, isDefault: items.length === 0 }])} className="rounded-xl bg-gray-100 px-3.5 py-2 text-sm font-semibold text-gray-700 dark:bg-white/[0.08] dark:text-gray-200">添加模型</button>
+                  <button onClick={() => setModelDrafts((items) => [...items, { ...DEFAULT_MODEL_DRAFT, name: '新模型', isDefault: items.length === 0 }])} className="rounded-xl bg-gray-100 px-3.5 py-2 text-sm font-semibold text-gray-700 dark:bg-white/[0.08] dark:text-gray-200">添加模型</button>
                   <button onClick={saveModelProfiles} className="rounded-xl bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">保存模型服务</button>
                 </div>
               </section>
@@ -850,28 +855,15 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-lg font-bold tracking-tight">创建用户</h3>
-                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">设置账号信息、角色、额度、倍率和并发上限。</p>
+                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">创建普通用户账号，管理员权限需在数据库中手动调整。</p>
                 </div>
                 <button onClick={() => setShowCreateUser(false)} className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-white/[0.08] dark:hover:text-gray-200">×</button>
               </div>
             </div>
             <div className="grid gap-3 px-5 py-4">
               <input value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} placeholder="用户名" className="rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
-              <input value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="邮箱" className="rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
-              <input value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} placeholder="密码" className="rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
-              <div className="grid gap-2 sm:grid-cols-2">
-                {(['user', 'admin'] as UserRole[]).map((role) => (
-                  <button
-                    key={role}
-                    type="button"
-                    onClick={() => setForm({ ...form, role })}
-                    className={`rounded-xl border px-3 py-2.5 text-left transition ${form.role === role ? 'border-blue-300 bg-blue-50 text-blue-700 shadow-sm dark:border-blue-500/50 dark:bg-blue-500/10 dark:text-blue-300' : 'border-gray-200/70 bg-white text-gray-600 shadow-sm hover:border-gray-300 hover:bg-gray-50 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-300 dark:hover:bg-white/[0.06]'}`}
-                  >
-                    <span className="block text-sm font-semibold">{role}</span>
-                    <span className="mt-1 block text-xs opacity-75">{role === 'admin' ? '可进入控制台和全局设置' : '仅可生图和查看个人记录'}</span>
-                  </button>
-                ))}
-              </div>
+              <input value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} type="email" placeholder="邮箱" className="rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
+              <input value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} type="password" placeholder="密码" className="rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
               <div className="grid grid-cols-3 gap-2">
                 <input value={form.credits} onChange={(event) => setForm({ ...form, credits: event.target.value })} placeholder="Credits" className="rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
                 <input value={form.multiplier} onChange={(event) => setForm({ ...form, multiplier: event.target.value })} placeholder="倍率" className="rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
@@ -881,6 +873,86 @@ export default function ConsolePage({ currentUser, onClose }: ConsolePageProps) 
               <div className="mt-2 flex justify-end gap-2 border-t border-gray-100 pt-4 dark:border-white/[0.06]">
                 <button onClick={() => setShowCreateUser(false)} className="rounded-xl bg-gray-100 px-3.5 py-2 text-sm font-medium text-gray-700 dark:bg-white/[0.08] dark:text-gray-200">取消</button>
                 <button onClick={handleCreateUser} className="rounded-xl bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">创建</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm animate-overlay-in">
+          <div className="w-full max-w-lg overflow-hidden rounded-xl border border-gray-200/70 bg-white shadow-xl animate-confirm-in dark:border-white/[0.08] dark:bg-gray-900">
+            <div className="border-b border-gray-200/70 px-5 py-4 dark:border-white/[0.08]">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-bold tracking-tight">编辑用户配置</h3>
+                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{editingUser.username} · {editingUser.email}</p>
+                </div>
+                <button onClick={() => setEditingUser(null)} className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-white/[0.08] dark:hover:text-gray-200">×</button>
+              </div>
+            </div>
+            <div className="grid gap-4 px-5 py-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">专属倍率</span>
+                  <input value={editUserForm.multiplier} onChange={(event) => setEditUserForm({ ...editUserForm, multiplier: event.target.value })} className="w-full rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">专属并发</span>
+                  <input value={editUserForm.concurrencyLimit} onChange={(event) => setEditUserForm({ ...editUserForm, concurrencyLimit: event.target.value })} placeholder="留空使用默认" className="w-full rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
+                </label>
+              </div>
+              <label className="block">
+                <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">备注</span>
+                <textarea value={editUserForm.note} onChange={(event) => setEditUserForm({ ...editUserForm, note: event.target.value })} rows={3} maxLength={500} placeholder="填写用户备注" className="w-full resize-none rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
+              </label>
+              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                <label className="block">
+                  <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">重置密码</span>
+                  <input value={editUserForm.password} onChange={(event) => setEditUserForm({ ...editUserForm, password: event.target.value })} type="text" placeholder="留空不修改密码" className="w-full rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
+                </label>
+                <button type="button" onClick={() => setEditUserForm((draft) => ({ ...draft, password: generatePassword() }))} className="rounded-xl bg-gray-100 px-3.5 py-2.5 text-sm font-semibold text-gray-700 dark:bg-white/[0.08] dark:text-gray-200">随机生成</button>
+              </div>
+              <label className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2.5 dark:bg-white/[0.04]">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-200">账号状态</span>
+                <button
+                  type="button"
+                  onClick={() => setEditUserForm((draft) => ({ ...draft, disabled: !draft.disabled }))}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition ${editUserForm.disabled ? 'bg-gray-300 dark:bg-gray-700' : 'bg-blue-600'}`}
+                  role="switch"
+                  aria-checked={!editUserForm.disabled}
+                >
+                  <span className={`h-4 w-4 rounded-full bg-white shadow transition ${editUserForm.disabled ? 'translate-x-0.5' : 'translate-x-4'}`} />
+                </button>
+              </label>
+              <div className="grid gap-2 sm:grid-cols-3">
+                <button onClick={() => openCreditDialog(editingUser, 'recharge')} className="rounded-xl bg-blue-50 px-3.5 py-2 text-sm font-semibold text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">充值</button>
+                <button onClick={() => openCreditDialog(editingUser, 'refund')} className="rounded-xl bg-gray-100 px-3.5 py-2 text-sm font-semibold text-gray-700 dark:bg-white/[0.08] dark:text-gray-200">退款</button>
+                <button disabled={editingUser.id === currentUser.id} onClick={() => { void deleteUser(editingUser.id).then(async () => { setEditingUser(null); await refresh() }) }} className="rounded-xl bg-red-50 px-3.5 py-2 text-sm font-semibold text-red-600 disabled:opacity-40 dark:bg-red-500/10 dark:text-red-300">删除用户</button>
+              </div>
+              {error && <div className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600 dark:bg-red-500/10 dark:text-red-300">{error}</div>}
+              <div className="flex justify-end gap-2 border-t border-gray-100 pt-4 dark:border-white/[0.06]">
+                <button onClick={() => setEditingUser(null)} className="rounded-xl bg-gray-100 px-3.5 py-2 text-sm font-medium text-gray-700 dark:bg-white/[0.08] dark:text-gray-200">取消</button>
+                <button onClick={saveEditingUser} className="rounded-xl bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">保存</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {creditTarget && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm animate-overlay-in">
+          <div className="w-full max-w-sm overflow-hidden rounded-xl border border-gray-200/70 bg-white shadow-xl animate-confirm-in dark:border-white/[0.08] dark:bg-gray-900">
+            <div className="border-b border-gray-200/70 px-5 py-4 dark:border-white/[0.08]">
+              <h3 className="text-lg font-bold tracking-tight">{creditTarget.type === 'recharge' ? '用户充值' : '用户退款'}</h3>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{creditTarget.user.username} 当前余额 {creditTarget.user.credits.toFixed(2)} Credits</p>
+            </div>
+            <div className="grid gap-4 px-5 py-4">
+              <input value={creditForm.amount} onChange={(event) => setCreditForm({ amount: event.target.value })} placeholder="金额" className="rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
+              {error && <div className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600 dark:bg-red-500/10 dark:text-red-300">{error}</div>}
+              <div className="flex justify-end gap-2 border-t border-gray-100 pt-4 dark:border-white/[0.06]">
+                <button onClick={() => setCreditTarget(null)} className="rounded-xl bg-gray-100 px-3.5 py-2 text-sm font-medium text-gray-700 dark:bg-white/[0.08] dark:text-gray-200">取消</button>
+                <button onClick={submitCreditDialog} className="rounded-xl bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">确认</button>
               </div>
             </div>
           </div>

@@ -18,7 +18,7 @@ import AuthPage from './components/AuthPage'
 import ConsolePage from './components/ConsolePage'
 import AccountPage from './components/AccountPage'
 import QueueButton from './components/QueueButton'
-import { clearAuthSession, fetchCurrentUser, readAuthSession } from './lib/auth'
+import { clearAuthSession, DEFAULT_APP_NAME, fetchCurrentUser, readAuthSession, readPublicSettings } from './lib/auth'
 import type { AppUser } from './lib/auth'
 
 type AppView = 'app' | 'console' | 'account'
@@ -33,6 +33,7 @@ export default function App() {
   const setSettings = useStore((s) => s.setSettings)
   const [authSession, setAuthSession] = useState<AppUser | null>(() => readAuthSession()?.user ?? null)
   const [view, setView] = useState<AppView>(() => readRouteView())
+  const [appName, setAppName] = useState(DEFAULT_APP_NAME)
   useDockerApiUrlMigrationNotice()
 
   useEffect(() => {
@@ -75,6 +76,11 @@ export default function App() {
 
   useEffect(() => {
     void fetchCurrentUser().then((user) => setAuthSession(user))
+    void readPublicSettings().then((settings) => {
+      setAppName(settings.site.appName || DEFAULT_APP_NAME)
+    }).catch(() => {
+      setAppName(DEFAULT_APP_NAME)
+    })
   }, [])
 
   const navigateView = (nextView: AppView, replace = false) => {
@@ -103,11 +109,11 @@ export default function App() {
   }
 
   if (!authSession) {
-    return <AuthPage onAuthenticated={handleAuthenticated} />
+    return <AuthPage appName={appName} onAppNameChange={setAppName} onAuthenticated={handleAuthenticated} />
   }
 
   if (view === 'console' && authSession.role === 'admin') {
-    return <ConsolePage currentUser={authSession} onClose={() => navigateView('app', true)} />
+    return <ConsolePage currentUser={authSession} appName={appName} onAppNameChange={setAppName} onClose={() => navigateView('app', true)} />
   }
 
   if (view === 'account') {
@@ -117,6 +123,7 @@ export default function App() {
   return (
     <>
       <Header
+        appName={appName}
         user={authSession}
         onLogout={handleLogout}
         onOpenConsole={authSession.role === 'admin' ? () => navigateView('console') : undefined}

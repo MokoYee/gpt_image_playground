@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { authenticateUser, readPublicSettings, registerUser } from '../lib/auth'
+import { authenticateUser, DEFAULT_APP_NAME, readPublicSettings, registerUser } from '../lib/auth'
 import type { AppUser } from '../lib/auth'
 
 type AuthMode = 'login' | 'register'
 
 interface AuthPageProps {
+  appName: string
+  onAppNameChange?: (appName: string) => void
   onAuthenticated: (user: AppUser) => void
 }
 
@@ -82,7 +84,7 @@ function ModeButton({
   )
 }
 
-export default function AuthPage({ onAuthenticated }: AuthPageProps) {
+export default function AuthPage({ appName, onAppNameChange, onAuthenticated }: AuthPageProps) {
   const [mode, setMode] = useState<AuthMode>('login')
   const [loginId, setLoginId] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
@@ -94,17 +96,20 @@ export default function AuthPage({ onAuthenticated }: AuthPageProps) {
   const [message, setMessage] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [registrationOpen, setRegistrationOpen] = useState(true)
+  const logoText = (appName.trim() || DEFAULT_APP_NAME).slice(0, 1).toUpperCase()
 
   useEffect(() => {
     void readPublicSettings()
       .then((settings) => {
+        onAppNameChange?.(settings.site.appName || DEFAULT_APP_NAME)
         setRegistrationOpen(settings.auth.registrationOpen)
         if (!settings.auth.registrationOpen) setMode('login')
       })
       .catch(() => {
+        onAppNameChange?.(DEFAULT_APP_NAME)
         setRegistrationOpen(false)
       })
-  }, [])
+  }, [onAppNameChange])
 
   const switchMode = (nextMode: AuthMode) => {
     if (nextMode === 'register' && !registrationOpen) {
@@ -180,40 +185,26 @@ export default function AuthPage({ onAuthenticated }: AuthPageProps) {
       className="min-h-screen overflow-hidden bg-slate-50 bg-cover bg-center text-gray-900"
       style={{ backgroundImage: "url('/auth-bg.png')" }}
     >
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(59,130,246,0.14),transparent_32%),radial-gradient(circle_at_80%_8%,rgba(14,165,233,0.12),transparent_28%)]" />
+      <div className="absolute inset-0 bg-white/35" />
       <div className="safe-area-x relative flex min-h-screen items-center justify-center py-6 sm:py-8">
-        <section className="grid w-full max-w-[860px] overflow-hidden rounded-2xl border border-white/75 bg-white/[0.94] shadow-[0_18px_50px_rgba(15,23,42,0.18)] backdrop-blur-md min-[760px]:grid-cols-[0.9fr_1.1fr]">
+        <section className="grid w-full max-w-[760px] overflow-hidden rounded-2xl border border-white/75 bg-white/[0.95] shadow-[0_18px_50px_rgba(15,23,42,0.18)] backdrop-blur-md min-[760px]:grid-cols-[0.82fr_1.18fr]">
           <div
             className="relative hidden min-h-[520px] overflow-hidden bg-cover bg-center min-[760px]:block"
             style={{ backgroundImage: "url('/auth-tech-bg.png')" }}
           >
-            <div className="absolute inset-0 bg-gradient-to-br from-white/30 via-sky-50/35 to-blue-200/20" />
-            <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-white/90 via-white/58 to-transparent" />
-            <div className="absolute left-7 top-7 inline-flex items-center gap-2.5 rounded-xl border border-white/80 bg-white/58 px-3 py-2.5 text-slate-900 shadow-sm backdrop-blur-md">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-xs font-black text-white shadow-sm">H</span>
+            <div className="absolute inset-0 bg-gradient-to-br from-white/40 via-sky-50/35 to-blue-100/15" />
+            <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-white/88 via-white/60 to-transparent" />
+            <div className="absolute left-7 top-7 inline-flex items-center gap-2.5 rounded-xl border border-white/80 bg-white/62 px-3 py-2.5 text-slate-900 shadow-sm backdrop-blur-md">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-xs font-black text-white shadow-sm">{logoText}</span>
               <div>
-                <div className="text-sm font-bold leading-none">Hua Image</div>
-                <div className="mt-1 text-[11px] text-slate-500">Playground</div>
+                <div className="text-sm font-bold leading-none">{appName}</div>
+                <div className="mt-1 text-[11px] text-slate-500">图像生成工作台</div>
               </div>
             </div>
             <div className="absolute bottom-7 left-7 right-7 text-slate-950">
               <div className="max-w-[280px]">
-                <h1 className="text-2xl font-bold leading-tight tracking-tight">更专注地进入图像创作工作台</h1>
-                <p className="mt-3 text-sm leading-6 text-slate-600">登录后继续生成图片，统一管理历史记录、账户额度与创作流程。</p>
-              </div>
-              <div className="mt-6 grid grid-cols-3 gap-2.5 text-center">
-                <div className="rounded-xl border border-white/75 bg-white/54 px-2.5 py-2.5 shadow-sm backdrop-blur-md">
-                  <div className="text-sm font-bold">Secure</div>
-                  <div className="mt-1 text-[11px] text-slate-500">安全访问</div>
-                </div>
-                <div className="rounded-xl border border-white/75 bg-white/54 px-2.5 py-2.5 shadow-sm backdrop-blur-md">
-                  <div className="text-sm font-bold">Credits</div>
-                  <div className="mt-1 text-[11px] text-slate-500">额度计费</div>
-                </div>
-                <div className="rounded-xl border border-white/75 bg-white/54 px-2.5 py-2.5 shadow-sm backdrop-blur-md">
-                  <div className="text-sm font-bold">History</div>
-                  <div className="mt-1 text-[11px] text-slate-500">历史记录</div>
-                </div>
+                <h1 className="text-2xl font-bold leading-tight tracking-tight">{appName}</h1>
+                <p className="mt-3 text-sm leading-6 text-slate-600">登录后继续使用图像生成工作台。</p>
               </div>
             </div>
           </div>
@@ -222,9 +213,9 @@ export default function AuthPage({ onAuthenticated }: AuthPageProps) {
             <div className="mx-auto w-full max-w-[360px]">
               <div className="mb-6 min-[760px]:hidden">
                 <div className="inline-flex items-center gap-2.5">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-sm font-black text-white shadow-sm">H</span>
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-sm font-black text-white shadow-sm">{logoText}</span>
                   <div>
-                    <h1 className="text-[17px] font-bold tracking-tight text-gray-900">Hua Image Playground</h1>
+                    <h1 className="text-[17px] font-bold tracking-tight text-gray-900">{appName}</h1>
                     <p className="mt-1 text-xs text-gray-500">AI 图像创作工作台</p>
                   </div>
                 </div>
@@ -232,9 +223,9 @@ export default function AuthPage({ onAuthenticated }: AuthPageProps) {
 
               <div className={mode === 'register' ? 'mb-4' : 'mb-5'}>
                 <p className="text-xs font-semibold text-blue-600">{mode === 'login' ? '欢迎回来' : '创建账号'}</p>
-                <h2 className="mt-1.5 text-2xl font-bold tracking-tight text-gray-950">{mode === 'login' ? '登录 Hua Image' : '加入 Hua Image'}</h2>
+                <h2 className="mt-1.5 text-2xl font-bold tracking-tight text-gray-950">{mode === 'login' ? '登录系统' : '注册账号'}</h2>
                 <p className="mt-2 text-sm leading-6 text-gray-500">
-                  {mode === 'login' ? '使用用户名或邮箱继续你的图像生成流程。' : '注册后即可获得账户额度并保存历史记录。'}
+                  {mode === 'login' ? '请输入用户名或邮箱登录。' : '请填写账号信息完成注册。'}
                 </p>
               </div>
 
@@ -317,7 +308,11 @@ export default function AuthPage({ onAuthenticated }: AuthPageProps) {
                     <span className="mb-1.5 block text-sm text-gray-600">邮箱地址</span>
                     <input
                       value={email}
-                      onChange={(event) => setEmail(event.target.value)}
+                      onChange={(event) => {
+                        setEmail(event.target.value)
+                        if (errors.email) setErrors((current) => ({ ...current, email: validateEmail(event.target.value) }))
+                      }}
+                      onBlur={() => setErrors((current) => ({ ...current, email: validateEmail(email) }))}
                       type="email"
                       autoComplete="email"
                       placeholder="请输入邮箱地址"

@@ -10,14 +10,14 @@ import { withTransaction } from '../db.js'
 function sanitizeSystemSettings(settings: SystemSettings): SystemSettings {
   return {
     ...settings,
-    imageApi: {
-      ...settings.imageApi,
-      apiKey: undefined,
-    },
     models: settings.models.map((model) => ({
       ...model,
       apiKey: undefined,
     })),
+    defaultModel: settings.defaultModel ? {
+      ...settings.defaultModel,
+      apiKey: undefined,
+    } : undefined,
   }
 }
 
@@ -25,6 +25,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
   app.get('/api/settings/public', async () => {
     const settings = await readSystemSettings(app.context.db)
     return {
+      site: settings.site,
       auth: {
         registrationOpen: settings.auth.registrationOpen,
       },
@@ -39,6 +40,15 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
     return { settings: sanitizeSystemSettings(await readSystemSettings(app.context.db)) }
   })
 
+  app.put('/api/admin/settings/site', { preHandler: requireAdmin }, async (request) => {
+    const body = z.object({
+      appName: z.string().trim().min(1).max(60),
+    }).parse(request.body)
+    await writeSetting(app.context.db, 'site', body, request.user.id)
+    await writeAuditLog(app.context.db, request.user, 'settings.site.update', 'system_settings', 'site')
+    return { settings: sanitizeSystemSettings(await readSystemSettings(app.context.db)) }
+  })
+
   app.put('/api/admin/settings/auth', { preHandler: requireAdmin }, async (request) => {
     const body = z.object({
       registrationOpen: z.boolean(),
@@ -47,24 +57,6 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
     }).parse(request.body)
     await writeSetting(app.context.db, 'auth', body, request.user.id)
     await writeAuditLog(app.context.db, request.user, 'settings.auth.update', 'system_settings', 'auth')
-    return { settings: sanitizeSystemSettings(await readSystemSettings(app.context.db)) }
-  })
-
-  app.put('/api/admin/settings/image-api', { preHandler: requireAdmin }, async (request) => {
-    const body = z.object({
-      provider: z.literal('openai-compatible').default('openai-compatible'),
-      baseUrl: z.string().trim().refine((value) => value === '' || z.string().url().safeParse(value).success, 'API URL 格式不正确').optional().default(''),
-      apiKey: z.string().trim().optional(),
-      model: z.string().trim().optional().default(''),
-      apiMode: z.enum(['images', 'responses']).default('images'),
-      timeoutSeconds: z.coerce.number().int().min(10).max(900).default(120),
-    }).parse(request.body)
-    const current = await readSystemSettings(app.context.db)
-    await writeSetting(app.context.db, 'imageApi', {
-      ...body,
-      apiKey: body.apiKey?.trim() ? body.apiKey.trim() : current.imageApi.apiKey,
-    }, request.user.id)
-    await writeAuditLog(app.context.db, request.user, 'settings.image_api.update', 'system_settings', 'imageApi')
     return { settings: sanitizeSystemSettings(await readSystemSettings(app.context.db)) }
   })
 
