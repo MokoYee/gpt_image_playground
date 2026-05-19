@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import type { TaskRecord } from '../types'
-import { useStore, ensureImageThumbnailCached, subscribeImageThumbnail, updateTaskInStore, retryTask } from '../store'
+import { cancelQueuedTask, useStore, ensureImageThumbnailCached, subscribeImageThumbnail, toggleTaskFavorite, retryTask } from '../store'
 import { formatImageRatio } from '../lib/size'
 import { getParamDisplay, ActualValueBadge } from '../lib/paramDisplay'
 import { DEFAULT_IMAGES_MODEL } from '../lib/apiProfiles'
@@ -129,7 +129,7 @@ export default function TaskCard({
 
   // 定时更新运行中任务的计时
   useEffect(() => {
-    if (task.status !== 'running' && !(task.status === 'error' && task.customRecoverable)) return
+    if (task.status !== 'queued' && task.status !== 'running' && !(task.status === 'error' && task.customRecoverable)) return
     const id = setInterval(() => setNow(Date.now()), 1000)
     setNow(Date.now())
     return () => clearInterval(id)
@@ -172,7 +172,7 @@ export default function TaskCard({
 
   const duration = (() => {
     let seconds: number
-    if (task.status === 'running' || task.customRecoverable) {
+    if (task.status === 'queued' || task.status === 'running' || task.customRecoverable) {
       seconds = Math.floor((now - task.createdAt) / 1000)
     } else if (task.elapsed != null) {
       seconds = Math.floor(task.elapsed / 1000)
@@ -186,7 +186,7 @@ export default function TaskCard({
   const isSwipeReady = Math.abs(swipeOffset) >= 40
   const showSwipeAction = isSwipeReady || swipeActionActive
   const isCustomReconnecting = task.status === 'error' && task.customRecoverable
-  const showRunningTimer = task.status === 'running' || isCustomReconnecting
+  const showRunningTimer = task.status === 'queued' || task.status === 'running' || isCustomReconnecting
   const swipeBgClass = showSwipeAction
     ? swipeStartedSelected
       ? 'bg-gray-500 dark:bg-gray-600'
@@ -230,7 +230,7 @@ export default function TaskCard({
         className={`relative bg-white dark:bg-gray-900 rounded-xl border overflow-hidden cursor-pointer duration-200 hover:shadow-lg dark:hover:bg-gray-800/80 ${
           !isSwiping ? 'transition-[box-shadow,border-color,background-color,transform]' : 'transition-[box-shadow,border-color,background-color]'
         } ${
-          task.status === 'running'
+          task.status === 'running' || task.status === 'queued'
             ? 'border-blue-400 generating'
             : isSelected
             ? 'border-blue-500 shadow-md ring-2 ring-blue-500/50'
@@ -263,28 +263,28 @@ export default function TaskCard({
       <div className="flex h-40">
         {/* 左侧图片区域 */}
         <div className="w-40 min-w-[10rem] h-full bg-gray-100 dark:bg-black/20 relative flex items-center justify-center overflow-hidden flex-shrink-0">
-          {task.status === 'running' && (
+          {(task.status === 'queued' || task.status === 'running') && (
             <div className="flex flex-col items-center gap-2">
-              <svg
-                className="w-8 h-8 text-blue-400 animate-spin"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                />
+              {task.status === 'running' ? (
+                <svg className="w-8 h-8 text-blue-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              ) : (
+                <svg className="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M4 12h10M4 17h7" />
+                </svg>
+              )}
+              <span className="text-xs text-gray-400 dark:text-gray-500">{task.status === 'queued' ? '排队中' : '生成中'}</span>
+              {task.status === 'queued' && task.queuePosition ? <span className="text-[11px] text-gray-400">第 {task.queuePosition} 位</span> : null}
+            </div>
+          )}
+          {task.status === 'cancelled' && (
+            <div className="flex flex-col items-center gap-1 px-2">
+              <svg className="w-7 h-7 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
-              <span className="text-xs text-gray-400 dark:text-gray-500">生成中...</span>
+              <span className="text-xs text-gray-400 text-center leading-tight">已取消</span>
             </div>
           )}
           {task.status === 'error' && (
@@ -454,9 +454,20 @@ export default function TaskCard({
                   </svg>
                 </button>
               )}
+              {task.status === 'queued' && task.serverTaskId && (
+                <button
+                  onClick={() => cancelQueuedTask(task)}
+                  className="p-1.5 rounded-md hover:bg-red-50 dark:hover:bg-red-950/30 text-gray-400 hover:text-red-500 transition"
+                  title="取消任务"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
               <button
                 onClick={() =>
-                  updateTaskInStore(task.id, { isFavorite: !task.isFavorite })
+                  void toggleTaskFavorite(task)
                 }
                 className={`p-1.5 rounded-md transition ${
                   task.isFavorite

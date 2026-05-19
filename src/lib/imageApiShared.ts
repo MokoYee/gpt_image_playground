@@ -30,6 +30,14 @@ export interface CallApiResult {
   revisedPrompts?: Array<string | undefined>
   /** API 返回的原始图片 HTTP URL（非 base64 时记录） */
   rawImageUrls?: string[]
+  /** 后端任务 ID */
+  taskId?: string
+  /** 后端图片文件 ID */
+  imageFileIds?: string[]
+  /** 实际扣费 */
+  totalCredits?: number
+  /** 排队状态 */
+  status?: string
 }
 
 export function isHttpUrl(value: unknown): value is string {

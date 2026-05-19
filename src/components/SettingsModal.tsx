@@ -1399,7 +1399,7 @@ export default function SettingsModal() {
                     className="w-full rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:focus:border-blue-500/50"
                   />
                   <div data-selectable-text className="mt-1.5 min-h-[22px] flex items-center text-xs text-gray-500 dark:text-gray-500">
-                    <span>后端模式下以管理员系统设置中的上游 API 配置为准；此处仅保留本地兼容配置。</span>
+                    <span>登录账号使用系统统一配置；本地配置适用于未登录或独立部署场景。</span>
                   </div>
                 </label>
               )}

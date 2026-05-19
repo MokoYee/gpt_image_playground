@@ -30,13 +30,13 @@ import {
   clearImages,
   storeImage,
 } from './lib/db'
-import { callImageApi } from './lib/api'
+import { callImageApi, cancelImageTask, createImageTask, createProtectedImageLink, deleteImageTask, favoriteImageTask, fetchProtectedImageDataUrl, readImageTask, readMyImageTasks, type ServerImageTask } from './lib/api'
 import { IMAGE_FETCH_CORS_HINT } from './lib/imageApiShared'
 import { getCustomQueuedImageResult } from './lib/openaiCompatibleImageApi'
 import { validateMaskMatchesImage } from './lib/canvasImage'
 import { orderInputImagesForMask } from './lib/mask'
 import { getChangedParams, normalizeParamsForSettings } from './lib/paramCompatibility'
-import { readAuthSession } from './lib/auth'
+import { fetchCurrentUser, readAuthSession } from './lib/auth'
 import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate'
 
 // ===== Image cache =====
@@ -55,6 +55,7 @@ const CUSTOM_RECOVERY_POLL_MS = 10_000
 const SUPPORT_PROMPT_IMAGE_THRESHOLD = 50
 const customRecoveryTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const openAIWatchdogTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const serverTaskPollTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const OPENAI_INTERRUPTED_ERROR = '请求中断'
 
 function createOpenAITimeoutError(timeoutSeconds: number) {
@@ -104,9 +105,165 @@ function cacheThumbnail(id: string, thumbnail: { dataUrl: string; width?: number
   }
 }
 
+function serverImageLocalId(fileId: string) {
+  return `server:${fileId}`
+}
+
+async function cacheServerImage(fileId: string): Promise<string> {
+  const localId = serverImageLocalId(fileId)
+  const cached = getCachedImage(localId)
+  if (cached) return localId
+  const existing = await getImage(localId)
+  if (existing?.dataUrl) {
+    cacheImage(localId, existing.dataUrl)
+    return localId
+  }
+  const dataUrl = await fetchProtectedImageDataUrl(fileId)
+  await putImage({ id: localId, dataUrl, source: 'generated', createdAt: Date.now() })
+  cacheImage(localId, dataUrl)
+  return localId
+}
+
+async function mapServerTaskToLocalTask(serverTask: ServerImageTask, existing?: TaskRecord): Promise<TaskRecord> {
+  const outputImages: string[] = []
+  if (serverTask.status === 'done') {
+    for (const image of serverTask.outputImages ?? []) {
+      outputImages.push(await cacheServerImage(image.id))
+    }
+  }
+  const actualParamsByImage = serverTask.actualParamsByImage
+    ? Object.fromEntries(Object.entries(serverTask.actualParamsByImage).map(([fileId, params]) => [serverImageLocalId(fileId), params]))
+    : undefined
+  const revisedPromptByImage = serverTask.revisedPromptByImage
+    ? Object.fromEntries(Object.entries(serverTask.revisedPromptByImage).map(([fileId, prompt]) => [serverImageLocalId(fileId), prompt]))
+    : undefined
+
+  return {
+    ...(existing ?? {}),
+    id: existing?.id ?? serverTask.localTaskId ?? serverTask.id,
+    ownerUserId: serverTask.userId,
+    serverTaskId: serverTask.id,
+    prompt: serverTask.prompt,
+    params: serverTask.params,
+    apiProvider: serverTask.apiProvider,
+    apiModel: serverTask.apiModel,
+    inputImageIds: existing?.inputImageIds ?? [],
+    maskTargetImageId: existing?.maskTargetImageId ?? null,
+    maskImageId: existing?.maskImageId ?? null,
+    outputImages,
+    outputImageFileIds: serverTask.outputImages?.map((image) => image.id) ?? [],
+    rawImageUrls: serverTask.rawImageUrls?.length ? serverTask.rawImageUrls : existing?.rawImageUrls,
+    actualParams: serverTask.actualParams,
+    actualParamsByImage,
+    revisedPromptByImage,
+    status: serverTask.status,
+    error: serverTask.error ?? null,
+    createdAt: serverTask.createdAt ?? existing?.createdAt ?? Date.now(),
+    finishedAt: serverTask.finishedAt ?? null,
+    elapsed: serverTask.elapsed ?? null,
+    queuePosition: serverTask.queuePosition,
+    creditsEstimated: serverTask.creditsEstimated,
+    creditsReserved: serverTask.creditsReserved,
+    creditsCharged: serverTask.creditsCharged,
+    isFavorite: serverTask.isFavorite ?? existing?.isFavorite,
+  }
+}
+
+async function upsertServerTask(serverTask: ServerImageTask) {
+  const { tasks, setTasks } = useStore.getState()
+  const index = tasks.findIndex((task) => task.serverTaskId === serverTask.id || task.id === serverTask.localTaskId)
+  const existing = index >= 0 ? tasks[index] : undefined
+  const localTask = await mapServerTaskToLocalTask(serverTask, existing)
+  const nextTasks = index >= 0
+    ? tasks.map((task, taskIndex) => taskIndex === index ? localTask : task)
+    : [localTask, ...tasks]
+  setTasks(nextTasks)
+  await putTask(localTask)
+  maybeOpenSupportPrompt(tasks, nextTasks, localTask.id)
+  return localTask
+}
+
+function clearServerTaskPoll(taskId: string) {
+  const timer = serverTaskPollTimers.get(taskId)
+  if (timer) clearTimeout(timer)
+  serverTaskPollTimers.delete(taskId)
+}
+
+function scheduleServerTaskPoll(taskId: string, delay = 1500) {
+  clearServerTaskPoll(taskId)
+  serverTaskPollTimers.set(taskId, setTimeout(() => {
+    serverTaskPollTimers.delete(taskId)
+    void pollServerTask(taskId)
+  }, delay))
+}
+
+async function pollServerTask(taskId: string) {
+  try {
+    const serverTask = await readImageTask(taskId)
+    await upsertServerTask(serverTask)
+    if (serverTask.status === 'queued' || serverTask.status === 'running') {
+      scheduleServerTaskPoll(taskId, serverTask.status === 'queued' ? 2500 : 1500)
+    } else if (serverTask.status === 'done') {
+      void fetchCurrentUser()
+      useStore.getState().showToast(`生成完成，共 ${serverTask.outputImages.length} 张图片`, 'success')
+    } else if (serverTask.status === 'error') {
+      const local = useStore.getState().tasks.find((task) => task.serverTaskId === taskId)
+      if (local) useStore.getState().setDetailTaskId(local.id)
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    const local = useStore.getState().tasks.find((task) => task.serverTaskId === taskId)
+    if (local && (local.status === 'queued' || local.status === 'running')) {
+      updateTaskInStore(local.id, {
+        status: 'error',
+        error: message,
+        finishedAt: Date.now(),
+        elapsed: Date.now() - local.createdAt,
+      })
+    }
+  }
+}
+
+export async function syncServerHistory() {
+  const sessionUser = readAuthSession()?.user
+  if (!sessionUser) return
+  const serverTasks = await readMyImageTasks()
+  for (const serverTask of serverTasks.reverse()) {
+    await upsertServerTask(serverTask)
+    if (serverTask.status === 'queued' || serverTask.status === 'running') scheduleServerTaskPoll(serverTask.id)
+  }
+}
+
+export async function cancelQueuedTask(task: TaskRecord) {
+  if (!task.serverTaskId) return
+  await cancelImageTask(task.serverTaskId)
+  const serverTask = await readImageTask(task.serverTaskId)
+  await upsertServerTask(serverTask)
+}
+
+export async function toggleTaskFavorite(task: TaskRecord) {
+  const nextFavorite = !task.isFavorite
+  if (task.serverTaskId && readAuthSession()) {
+    await favoriteImageTask(task.serverTaskId, nextFavorite)
+  }
+  updateTaskInStore(task.id, { isFavorite: nextFavorite })
+}
+
 export async function ensureImageCached(id: string): Promise<string | undefined> {
   const cached = getCachedImage(id)
   if (cached) return cached
+  if (id.startsWith('server:')) {
+    const rec = await getImage(id)
+    if (rec) {
+      cacheImage(id, rec.dataUrl)
+      return rec.dataUrl
+    }
+    const fileId = id.slice('server:'.length)
+    const dataUrl = await fetchProtectedImageDataUrl(fileId)
+    await putImage({ id, dataUrl, source: 'generated', createdAt: Date.now() })
+    cacheImage(id, dataUrl)
+    return dataUrl
+  }
   const rec = await getImage(id)
   if (rec) {
     cacheImage(id, rec.dataUrl)
@@ -378,7 +535,7 @@ interface AppState {
   // 搜索和筛选
   searchQuery: string
   setSearchQuery: (q: string) => void
-  filterStatus: 'all' | 'running' | 'done' | 'error'
+  filterStatus: 'all' | TaskRecord['status']
   setFilterStatus: (status: AppState['filterStatus']) => void
   filterFavorite: boolean
   setFilterFavorite: (f: boolean) => void
@@ -940,6 +1097,11 @@ export async function initStore() {
   const { tasks, interruptedTasks } = markInterruptedOpenAIRunningTasks(storedTasks)
   await Promise.all(interruptedTasks.map((task) => putTask(task)))
   useStore.getState().setTasks(tasks)
+  if (readAuthSession()) {
+    void syncServerHistory().catch((error) => {
+      useStore.getState().showToast(error instanceof Error ? error.message : '历史记录同步失败', 'error')
+    })
+  }
   showSupportPromptForExistingLocalData(tasks)
   for (const task of tasks) {
     if (
@@ -1097,7 +1259,7 @@ export async function submitTask(options: { allowFullMask?: boolean; useCurrentA
     maskTargetImageId,
     maskImageId,
     outputImages: [],
-    status: 'running',
+    status: sessionUser ? 'queued' : 'running',
     error: null,
     createdAt: Date.now(),
     finishedAt: null,
@@ -1122,8 +1284,9 @@ async function executeTask(taskId: string) {
   const { settings } = useStore.getState()
   const task = useStore.getState().tasks.find((t) => t.id === taskId)
   if (!task) return
+  const authSession = readAuthSession()
   const taskProfile = getTaskApiProfile(settings, task)
-  if (!taskProfile && task.apiProfileId) {
+  if (!authSession && !taskProfile && task.apiProfileId) {
     updateTaskInStore(taskId, {
       status: 'error',
       error: '找不到此任务所使用的 API 配置。',
@@ -1141,7 +1304,7 @@ async function executeTask(taskId: string) {
     ? { taskId: task.customTaskId }
     : null
 
-  if (!isAsyncCustomProviderTask(requestSettings, taskProvider, task.inputImageIds.length > 0)) {
+  if (!authSession && !isAsyncCustomProviderTask(requestSettings, taskProvider, task.inputImageIds.length > 0)) {
     scheduleOpenAIWatchdog(taskId, activeProfile.timeout)
   }
 
@@ -1157,6 +1320,25 @@ async function executeTask(taskId: string) {
     if (task.maskImageId) {
       maskDataUrl = await ensureImageCached(task.maskImageId)
       if (!maskDataUrl) throw new Error('遮罩图片已不存在')
+    }
+
+    if (authSession) {
+      const result = await createImageTask({
+        localTaskId: task.id,
+        settings: requestSettings,
+        prompt: replaceImageMentionsForApi(task.prompt, inputDataUrls.length),
+        params: task.params,
+        inputImageDataUrls: inputDataUrls,
+        maskDataUrl,
+      })
+      updateTaskInStore(taskId, {
+        serverTaskId: result.taskId,
+        status: 'queued',
+        queuePosition: result.queue.queued,
+      })
+      scheduleServerTaskPoll(result.taskId, 800)
+      useStore.getState().showToast(result.queue.queued > 0 ? `已加入队列，前方 ${Math.max(0, result.queue.queued - 1)} 个任务` : '任务已提交', 'success')
+      return
     }
 
     const result = await callImageApi({
@@ -1291,11 +1473,13 @@ export function updateTaskInStore(taskId: string, patch: Partial<TaskRecord>) {
 /** 重试失败的任务：创建新任务并执行 */
 export async function retryTask(task: TaskRecord) {
   const { settings } = useStore.getState()
+  const sessionUser = readAuthSession()?.user ?? null
   const activeProfile = getActiveApiProfile(settings)
   const normalizedParams = normalizeParamsForSettings(task.params, settings, { hasInputImages: task.inputImageIds.length > 0 })
   const taskId = genId()
   const newTask: TaskRecord = {
     id: taskId,
+    ownerUserId: sessionUser?.id,
     prompt: task.prompt,
     params: normalizedParams,
     apiProvider: activeProfile.provider,
@@ -1306,7 +1490,7 @@ export async function retryTask(task: TaskRecord) {
     maskTargetImageId: task.maskTargetImageId ?? null,
     maskImageId: task.maskImageId ?? null,
     outputImages: [],
-    status: 'running',
+    status: sessionUser ? 'queued' : 'running',
     error: null,
     createdAt: Date.now(),
     finishedAt: null,
@@ -1456,6 +1640,9 @@ export async function removeMultipleTasks(taskIds: string[]) {
 /** 删除单条任务 */
 export async function removeTask(task: TaskRecord) {
   const { tasks, setTasks, inputImages, showToast } = useStore.getState()
+  if (task.serverTaskId && readAuthSession() && task.status !== 'running' && task.status !== 'queued') {
+    await deleteImageTask(task.serverTaskId)
+  }
 
   // 收集此任务关联的图片
   const taskImageIds = new Set([

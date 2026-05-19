@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
-import { initStore } from './store'
-import { useStore } from './store'
+import { initStore, syncServerHistory, useStore } from './store'
 import { buildSettingsFromUrlParams, clearUrlSettingParams, hasUrlSettingParams } from './lib/urlSettings'
 import { useDockerApiUrlMigrationNotice } from './hooks/useDockerApiUrlMigrationNotice'
 import Header from './components/Header'
@@ -18,6 +17,7 @@ import SupportPromptModal from './components/SupportPromptModal'
 import AuthPage from './components/AuthPage'
 import ConsolePage from './components/ConsolePage'
 import AccountPage from './components/AccountPage'
+import QueueButton from './components/QueueButton'
 import { clearAuthSession, fetchCurrentUser, readAuthSession } from './lib/auth'
 import type { AppUser } from './lib/auth'
 
@@ -90,6 +90,7 @@ export default function App() {
 
   const handleAuthenticated = (user: AppUser) => {
     setAuthSession(user)
+    void syncServerHistory()
     window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`)
     setView('app')
   }
@@ -123,7 +124,14 @@ export default function App() {
       />
       <main data-home-main data-drag-select-surface className="pb-48">
         <div className="safe-area-x max-w-7xl mx-auto">
-          <SearchBar />
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <SearchBar />
+            </div>
+            <div className="mt-6">
+              <QueueButton />
+            </div>
+          </div>
           <TaskGrid />
         </div>
       </main>

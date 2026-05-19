@@ -1,11 +1,12 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
-import { useStore, getCachedImage, ensureImageCached, reuseConfig, editOutputs, removeTask, updateTaskInStore, showCodexCliPrompt, getCodexCliPromptKey, retryTask } from '../store'
+import { useStore, getCachedImage, ensureImageCached, reuseConfig, editOutputs, removeTask, toggleTaskFavorite, showCodexCliPrompt, getCodexCliPromptKey, retryTask } from '../store'
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape'
 import { usePreventBackgroundScroll } from '../hooks/usePreventBackgroundScroll'
 import { useTooltip } from '../hooks/useTooltip'
 import { formatImageRatio } from '../lib/size'
 import { ActualValueBadge, DetailParamValue } from '../lib/paramDisplay'
 import { copyBlobToClipboard, copyTextToClipboard, getClipboardFailureMessage } from '../lib/clipboard'
+import { createProtectedImageLink } from '../lib/api'
 import { createMaskPreviewDataUrl } from '../lib/canvasImage'
 import { dismissAllTooltips } from '../lib/tooltipDismiss'
 import { CloseIcon, CodeIcon, CopyIcon, EditIcon, LinkIcon, TrashIcon } from './icons'
@@ -66,7 +67,7 @@ export default function DetailModal() {
   }, [detailTaskId])
 
   useEffect(() => {
-    if (task?.status !== 'running' && !(task?.status === 'error' && task.customRecoverable)) return
+    if (task?.status !== 'queued' && task?.status !== 'running' && !(task?.status === 'error' && task.customRecoverable)) return
     const id = window.setInterval(() => setNow(Date.now()), 1000)
     setNow(Date.now())
     return () => window.clearInterval(id)
@@ -194,6 +195,8 @@ export default function DetailModal() {
   const showSourceInfo = Boolean(task.apiProvider || task.apiProfileName || task.apiModel)
   const isCustomReconnecting = task.status === 'error' && task.customRecoverable
   const rawImageUrls = task.rawImageUrls ?? []
+  const outputImageFileIds = task.outputImageFileIds ?? []
+  const [protectedImageLinks, setProtectedImageLinks] = useState<string[]>([])
 
   const formatTime = (ts: number | null) => {
     if (!ts) return ''
@@ -201,7 +204,7 @@ export default function DetailModal() {
   }
 
   const formatDuration = () => {
-    if (task.status === 'running' || isCustomReconnecting) {
+    if (task.status === 'queued' || task.status === 'running' || isCustomReconnecting) {
       const seconds = Math.max(0, Math.floor((now - task.createdAt) / 1000))
       const mm = String(Math.floor(seconds / 60)).padStart(2, '0')
       const ss = String(seconds % 60).padStart(2, '0')
@@ -240,8 +243,23 @@ export default function DetailModal() {
     })
   }
 
+  useEffect(() => {
+    if (!showRawUrlsModal || !outputImageFileIds.length) return
+    let cancelled = false
+    Promise.all(outputImageFileIds.map((fileId) => createProtectedImageLink(fileId)))
+      .then((links) => {
+        if (!cancelled) setProtectedImageLinks(links)
+      })
+      .catch(() => {
+        if (!cancelled) setProtectedImageLinks([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [outputImageFileIds, showRawUrlsModal])
+
   const handleToggleFavorite = () => {
-    updateTaskInStore(task.id, { isFavorite: !task.isFavorite })
+    void toggleTaskFavorite(task)
   }
 
   const handleCopyError = async () => {
@@ -399,7 +417,7 @@ export default function DetailModal() {
               )}
             </>
           )}
-          {task.status === 'running' && (
+          {(task.status === 'queued' || task.status === 'running') && (
             <>
               <div className="absolute left-4 top-4 flex items-center gap-1 bg-black/50 text-white text-xs px-2 py-0.5 rounded backdrop-blur-sm font-mono">
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -407,13 +425,20 @@ export default function DetailModal() {
                 </svg>
                 {formatDuration()}
               </div>
-              {task.status === 'running' && (
+              {task.status === 'running' ? (
                 <svg className="w-10 h-10 text-blue-400 animate-spin" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>
+              ) : (
+                <div className="rounded-xl bg-white/90 px-4 py-2 text-sm font-medium text-gray-700 shadow-sm dark:bg-gray-900/90 dark:text-gray-200">
+                  排队中{task.queuePosition ? ` · 第 ${task.queuePosition} 位` : ''}
+                </div>
               )}
             </>
+          )}
+          {task.status === 'cancelled' && (
+            <div className="text-center text-sm text-gray-500">任务已取消</div>
           )}
           {task.status === 'error' && (
             <div className="w-full max-w-md px-4 text-center">
@@ -467,16 +492,24 @@ export default function DetailModal() {
                     </ViewportTooltip>
                   </div>
                 )}
-                {task.rawImageUrls && task.rawImageUrls.length > 0 && (
+                {(rawImageUrls.length > 0 || outputImageFileIds.length > 0) && (
                   <div className="relative group">
                     <button
                       type="button"
                       {...copyRawUrlsTooltip.handlers}
                       onClick={async (e) => {
-                        if (task.rawImageUrls!.length === 1) {
+                        if (outputImageFileIds.length === 1 && rawImageUrls.length === 0) {
                           copyRawUrlsTooltip.handlers.onClick()
                           try {
-                            await copyTextToClipboard(task.rawImageUrls![0])
+                            await copyTextToClipboard(await createProtectedImageLink(outputImageFileIds[0]))
+                            showToast('图片链接已复制', 'success')
+                          } catch (err) {
+                            showToast(getClipboardFailureMessage('复制链接失败', err), 'error')
+                          }
+                        } else if (rawImageUrls.length === 1 && outputImageFileIds.length === 0) {
+                          copyRawUrlsTooltip.handlers.onClick()
+                          try {
+                            await copyTextToClipboard(rawImageUrls[0])
                             showToast('图片链接已复制', 'success')
                           } catch (err) {
                             showToast(getClipboardFailureMessage('复制链接失败', err), 'error')
@@ -716,7 +749,7 @@ export default function DetailModal() {
         </div>
       </div>
 
-      {showRawUrlsModal && rawImageUrls.length > 0 && (
+      {showRawUrlsModal && (rawImageUrls.length > 0 || outputImageFileIds.length > 0) && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm sm:p-6"
           onPointerDown={(e) => {
@@ -730,13 +763,14 @@ export default function DetailModal() {
         >
           <div ref={rawUrlsModalRef} className="flex w-full max-w-2xl max-h-[90vh] flex-col overflow-hidden rounded-2xl bg-white shadow-xl dark:bg-[#1c1c1e]" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4 dark:border-white/[0.08] shrink-0">
-              <h3 className="text-base font-semibold text-gray-900 dark:text-white">原始图片链接 ({rawImageUrls.length})</h3>
+              <h3 className="text-base font-semibold text-gray-900 dark:text-white">图片链接 ({Math.max(rawImageUrls.length, outputImageFileIds.length)})</h3>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={async () => {
                     try {
-                      await copyTextToClipboard(rawImageUrls.join('\n'))
+                      const links = protectedImageLinks.length ? protectedImageLinks : rawImageUrls
+                      await copyTextToClipboard(links.join('\n'))
                       showToast('复制成功', 'success')
                     } catch (err) {
                       showToast(getClipboardFailureMessage('复制失败', err), 'error')
@@ -758,7 +792,7 @@ export default function DetailModal() {
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-5 bg-gray-50/50 dark:bg-black/20 overscroll-contain">
               <div className="space-y-2.5">
-                {rawImageUrls.map((url, i) => (
+                {(protectedImageLinks.length ? protectedImageLinks : rawImageUrls).map((url, i) => (
                   <div key={i} className="group flex items-center gap-3 p-3 sm:p-4 rounded-xl bg-white dark:bg-[#1c1c1e] border border-gray-100 dark:border-white/[0.06] shadow-sm hover:shadow-md transition-all">
                     <div className="flex-1 min-w-0 flex flex-col gap-1">
                       <div className="text-xs font-medium text-gray-400 dark:text-gray-500">

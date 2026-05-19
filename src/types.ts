@@ -124,7 +124,7 @@ export interface MaskDraft {
 
 // ===== 任务记录 =====
 
-export type TaskStatus = 'running' | 'done' | 'error'
+export type TaskStatus = 'queued' | 'running' | 'done' | 'error' | 'cancelled'
 
 export interface TaskRecord {
   id: string
@@ -161,6 +161,18 @@ export interface TaskRecord {
   maskImageId?: string | null
   /** 输出图片的 image store id 列表 */
   outputImages: string[]
+  /** 服务端任务 ID，用于登录模式轮询与历史同步 */
+  serverTaskId?: string
+  /** 服务端图片文件 ID，按权限通过后端读取 */
+  outputImageFileIds?: string[]
+  /** 排队位置快照 */
+  queuePosition?: number | null
+  /** 预估消耗 */
+  creditsEstimated?: number | null
+  /** 已预占额度 */
+  creditsReserved?: number | null
+  /** 实际扣费 */
+  creditsCharged?: number | null
   /** API 返回的原始图片 HTTP URL（非 base64 时记录） */
   rawImageUrls?: string[]
   /** 发生解析错误时的原始响应 JSON */

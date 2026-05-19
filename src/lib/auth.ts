@@ -9,6 +9,7 @@ export interface AppUser {
   role: UserRole
   credits: number
   multiplier: number
+  concurrencyLimit?: number | null
   disabled: boolean
   createdAt: number
 }
@@ -35,6 +36,20 @@ export interface UsageRecord {
   multiplier: number
   totalCredits: number
   createdAt: number
+  apiModel?: string
+  taskStatus?: string
+  elapsed?: number | null
+  imageFiles?: Array<{ id: string; mimeType?: string; width?: number | null; height?: number | null }>
+}
+
+export interface UsageRecordFilters {
+  userId?: string
+  model?: string
+  quality?: TaskParams['quality']
+  status?: 'queued' | 'running' | 'done' | 'error' | 'cancelled'
+  keyword?: string
+  from?: number
+  to?: number
 }
 
 export interface SystemSettings {
@@ -60,6 +75,36 @@ export interface SystemSettings {
     apiMode: 'images' | 'responses'
     timeoutSeconds: number
   }
+  queue: {
+    globalConcurrency: number
+    defaultUserConcurrency: number
+    maxQueueSize: number
+  }
+  models: ModelProfile[]
+}
+
+export interface ModelProfile {
+  id?: string
+  name: string
+  provider: 'openai-compatible'
+  baseUrl: string
+  apiKey?: string
+  model: string
+  apiMode: 'images' | 'responses'
+  timeoutSeconds: number
+  enabled: boolean
+  isDefault: boolean
+}
+
+export interface AuditLog {
+  id: string
+  actorId?: string
+  actorUsername?: string
+  action: string
+  targetType: string
+  targetId?: string
+  detail: Record<string, unknown>
+  createdAt: number
 }
 
 export interface PublicSettings {
@@ -177,7 +222,7 @@ export async function listUsers(): Promise<AppUser[]> {
   return result.items
 }
 
-export async function createUser(input: Pick<AppUser, 'username' | 'email' | 'role'> & { password: string; credits?: number; multiplier?: number }): Promise<{ user: AppUser | null; error: string | null }> {
+export async function createUser(input: Pick<AppUser, 'username' | 'email' | 'role'> & { password: string; credits?: number; multiplier?: number; concurrencyLimit?: number | null }): Promise<{ user: AppUser | null; error: string | null }> {
   try {
     const result = await requestApi<{ user: AppUser }>('/api/admin/users', {
       method: 'POST',
@@ -189,7 +234,7 @@ export async function createUser(input: Pick<AppUser, 'username' | 'email' | 'ro
   }
 }
 
-export async function updateUser(userId: string, patch: Partial<Pick<AppUser, 'role' | 'disabled' | 'multiplier'>>): Promise<AppUser | null> {
+export async function updateUser(userId: string, patch: Partial<Pick<AppUser, 'role' | 'disabled' | 'multiplier' | 'concurrencyLimit'>>): Promise<AppUser | null> {
   const result = await requestApi<{ user: AppUser }>(`/api/admin/users/${userId}`, {
     method: 'PATCH',
     body: JSON.stringify(patch),
@@ -214,8 +259,13 @@ export async function readCreditRecords(): Promise<CreditRecord[]> {
   return result.items
 }
 
-export async function readUsageRecords(admin = false): Promise<UsageRecord[]> {
-  const result = await requestApi<{ items: UsageRecord[] }>(admin ? '/api/admin/usage-records?pageSize=100' : '/api/me/usage-records?pageSize=100')
+export async function readUsageRecords(admin = false, filters: UsageRecordFilters = {}): Promise<UsageRecord[]> {
+  const params = new URLSearchParams({ pageSize: '100' })
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== null && String(value).trim() !== '') params.set(key, String(value))
+  }
+  const path = admin ? `/api/admin/usage-records?${params.toString()}` : `/api/me/usage-records?${params.toString()}`
+  const result = await requestApi<{ items: UsageRecord[] }>(path)
   return result.items
 }
 
@@ -238,6 +288,27 @@ export async function updateImageApiSettings(input: SystemSettings['imageApi']):
     body: JSON.stringify(input),
   })
   return result.settings
+}
+
+export async function updateQueueSettings(input: SystemSettings['queue']): Promise<SystemSettings> {
+  const result = await requestApi<{ settings: SystemSettings }>('/api/admin/settings/queue', {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  })
+  return result.settings
+}
+
+export async function updateModelProfiles(items: ModelProfile[]): Promise<SystemSettings> {
+  const result = await requestApi<{ settings: SystemSettings }>('/api/admin/model-profiles', {
+    method: 'PUT',
+    body: JSON.stringify({ items }),
+  })
+  return result.settings
+}
+
+export async function readAuditLogs(): Promise<AuditLog[]> {
+  const result = await requestApi<{ items: AuditLog[] }>('/api/admin/audit-logs?pageSize=100')
+  return result.items
 }
 
 export function getQualityBaseCredits(quality: TaskParams['quality']): number {
