@@ -1,4 +1,19 @@
 import { z } from 'zod'
+import { existsSync, readFileSync } from 'node:fs'
+
+function loadLocalEnvFile(path = '.env.local'): void {
+  if (!existsSync(path)) return
+  const lines = readFileSync(path, 'utf-8').split(/\r?\n/)
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+    const index = trimmed.indexOf('=')
+    if (index <= 0) continue
+    const key = trimmed.slice(0, index).trim()
+    const value = trimmed.slice(index + 1).trim().replace(/^(['"])(.*)\1$/, '$2')
+    if (process.env[key] === undefined) process.env[key] = value
+  }
+}
 
 const ConfigSchema = z.object({
   NODE_ENV: z.string().default('development'),
@@ -16,5 +31,6 @@ const ConfigSchema = z.object({
 export type AppConfig = z.infer<typeof ConfigSchema>
 
 export function loadConfig(): AppConfig {
+  loadLocalEnvFile()
   return ConfigSchema.parse(process.env)
 }
