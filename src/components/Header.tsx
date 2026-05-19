@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useVersionCheck } from '../hooks/useVersionCheck'
 import { useTooltip } from '../hooks/useTooltip'
 import { dismissAllTooltips } from '../lib/tooltipDismiss'
@@ -11,6 +11,7 @@ interface HeaderProps {
   user?: {
     username: string
     email: string
+    credits?: number
     role?: UserRole
   }
   onLogout?: () => void
@@ -18,14 +19,61 @@ interface HeaderProps {
   onOpenAccount?: () => void
 }
 
+function formatCredits(value?: number) {
+  return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(2) : '-'
+}
+
+function DefaultAvatar({ className = 'h-9 w-9' }: { className?: string }) {
+  return (
+    <span className={`${className} inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-blue-500 via-cyan-400 to-emerald-400 text-white shadow-sm ring-1 ring-black/5 dark:ring-white/10`}>
+      <svg className="h-[62%] w-[62%]" fill="none" stroke="currentColor" strokeWidth={2.1} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="8" r="4" />
+        <path d="M4.8 20a7.2 7.2 0 0 1 14.4 0" />
+      </svg>
+    </span>
+  )
+}
+
+function LogoutIcon() {
+  return (
+    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M10 17l5-5-5-5" />
+      <path d="M15 12H3" />
+      <path d="M21 5v14" />
+    </svg>
+  )
+}
+
 export default function Header({ appName, user, onLogout, onOpenConsole, onOpenAccount }: HeaderProps) {
   const { hasUpdate, latestRelease, dismiss } = useVersionCheck()
   const [showHelp, setShowHelp] = useState(false)
+  const [showUserMenu, setShowUserMenu] = useState(false)
+  const closeUserMenuTimer = useRef<number | null>(null)
 
   const consoleTooltip = useTooltip()
   const accountTooltip = useTooltip()
   const helpTooltip = useTooltip()
   const settingsTooltip = useTooltip()
+
+  useEffect(() => () => {
+    if (closeUserMenuTimer.current !== null) window.clearTimeout(closeUserMenuTimer.current)
+  }, [])
+
+  const openUserMenu = () => {
+    if (closeUserMenuTimer.current !== null) {
+      window.clearTimeout(closeUserMenuTimer.current)
+      closeUserMenuTimer.current = null
+    }
+    setShowUserMenu(true)
+  }
+
+  const closeUserMenuSoon = () => {
+    if (closeUserMenuTimer.current !== null) window.clearTimeout(closeUserMenuTimer.current)
+    closeUserMenuTimer.current = window.setTimeout(() => {
+      setShowUserMenu(false)
+      closeUserMenuTimer.current = null
+    }, 180)
+  }
 
   return (
     <>
@@ -49,11 +97,6 @@ export default function Header({ appName, user, onLogout, onOpenConsole, onOpenA
             </h1>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            {user && (
-              <div className="hidden items-center gap-2 rounded-xl border border-gray-200/70 bg-white/60 px-2.5 py-1.5 text-xs text-gray-600 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-300 sm:flex">
-                <span className="max-w-28 truncate font-medium">{user.username}</span>
-              </div>
-            )}
             {onOpenConsole && (
               <div
                 className="relative"
@@ -171,13 +214,76 @@ export default function Header({ appName, user, onLogout, onOpenConsole, onOpenA
                 系统设置
               </ViewportTooltip>
             </div>}
-            {onLogout && (
-              <button
-                onClick={onLogout}
-                className="rounded-lg px-2.5 py-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-900 dark:hover:text-gray-200"
+            {user && (
+              <div
+                className="relative ml-1"
+                onMouseEnter={openUserMenu}
+                onMouseLeave={closeUserMenuSoon}
+                onFocus={openUserMenu}
+                onBlur={(event) => {
+                  const nextTarget = event.relatedTarget
+                  if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) {
+                    setShowUserMenu(false)
+                  }
+                }}
               >
-                退出
-              </button>
+                <button
+                  type="button"
+                  className="flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:hover:bg-gray-900"
+                  aria-label="用户菜单"
+                  aria-haspopup="menu"
+                  aria-expanded={showUserMenu}
+                  onClick={() => {
+                    dismissAllTooltips()
+                    setShowUserMenu((open) => !open)
+                  }}
+                >
+                  <DefaultAvatar />
+                </button>
+                {showUserMenu && (
+                  <div className="absolute right-0 top-full z-50 pt-2">
+                    <div
+                      role="menu"
+                      className="w-64 overflow-hidden rounded-2xl border border-gray-200/70 bg-white/95 p-1.5 text-sm shadow-xl ring-1 ring-black/5 backdrop-blur-xl animate-dropdown-down dark:border-white/[0.08] dark:bg-gray-900/95 dark:ring-white/10"
+                    >
+                      <div className="flex items-center gap-3 rounded-xl px-2.5 py-2.5">
+                        <DefaultAvatar className="h-10 w-10" />
+                        <div className="min-w-0">
+                          <div className="truncate font-semibold text-gray-900 dark:text-gray-100" title={user.username}>
+                            {user.username}
+                          </div>
+                          <div className="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400" title={user.email}>
+                            {user.email}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mx-2 border-t border-gray-100 dark:border-white/[0.08]" />
+                      <div className="flex items-center justify-between gap-3 rounded-xl px-2.5 py-2 text-xs">
+                        <span className="text-gray-500 dark:text-gray-400">余额</span>
+                        <span className="font-semibold text-blue-600 dark:text-blue-300">{formatCredits(user.credits)} Credits</span>
+                      </div>
+                      {onLogout && (
+                        <>
+                          <div className="mx-2 border-t border-gray-100 dark:border-white/[0.08]" />
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => {
+                              setShowUserMenu(false)
+                              dismissAllTooltips()
+                              onLogout()
+                            }}
+                            className="mt-1 flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left text-sm font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10"
+                          >
+                            <LogoutIcon />
+                            退出
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>

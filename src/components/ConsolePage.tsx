@@ -1,4 +1,27 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import Alert from 'antd/es/alert'
+import Button from 'antd/es/button'
+import ConfigProvider from 'antd/es/config-provider'
+import DatePicker from 'antd/es/date-picker'
+import Dropdown from 'antd/es/dropdown'
+import Empty from 'antd/es/empty'
+import Form from 'antd/es/form'
+import Input from 'antd/es/input'
+import message from 'antd/es/message'
+import Modal from 'antd/es/modal'
+import Select from 'antd/es/select'
+import Space from 'antd/es/space'
+import Switch from 'antd/es/switch'
+import Table from 'antd/es/table'
+import Tag from 'antd/es/tag'
+import ArrowLeftOutlined from '@ant-design/icons/es/icons/ArrowLeftOutlined'
+import UserAddOutlined from '@ant-design/icons/es/icons/UserAddOutlined'
+import zhCN from 'antd/es/locale/zh_CN'
+import antdTheme from 'antd/es/theme'
+import dayjs from 'dayjs'
+import type { MenuProps } from 'antd/es/menu'
+import type { ColumnsType } from 'antd/es/table'
+import 'antd/dist/reset.css'
 import {
   adjustUserCredits,
   createUser,
@@ -17,6 +40,9 @@ import {
 } from '../lib/auth'
 import type { AppUser, AuditLog, CreditRecord, ModelProfile, SystemSettings, UsageRecord, UsageRecordFilters } from '../lib/auth'
 import { createProtectedImageLink, fetchProtectedImageDataUrl } from '../lib/api'
+import { copyTextToClipboard, getClipboardFailureMessage } from '../lib/clipboard'
+import { useStore } from '../store'
+import Lightbox from './Lightbox'
 
 interface ConsolePageProps {
   currentUser: AppUser
@@ -89,6 +115,46 @@ const EMPTY_USAGE_FILTERS = {
   to: '',
 }
 
+const QUALITY_OPTIONS = [
+  { value: '', label: '全部质量' },
+  { value: 'auto', label: 'auto' },
+  { value: 'low', label: 'low' },
+  { value: 'medium', label: 'medium' },
+  { value: 'high', label: 'high' },
+]
+
+const TASK_STATUS_OPTIONS = [
+  { value: '', label: '全部状态' },
+  { value: 'queued', label: '排队中' },
+  { value: 'running', label: '生成中' },
+  { value: 'done', label: '已完成' },
+  { value: 'error', label: '失败' },
+  { value: 'cancelled', label: '已取消' },
+]
+
+const API_MODE_OPTIONS = [
+  { value: 'images', label: 'Images' },
+  { value: 'responses', label: 'Responses' },
+]
+
+const TABLE_SCROLL_Y = 'min(52vh, 520px)'
+
+const TASK_STATUS_LABELS: Record<string, string> = {
+  queued: '排队中',
+  running: '生成中',
+  done: '已完成',
+  error: '失败',
+  cancelled: '已取消',
+}
+
+const TASK_STATUS_COLORS: Record<string, string> = {
+  queued: 'processing',
+  running: 'blue',
+  done: 'success',
+  error: 'error',
+  cancelled: 'default',
+}
+
 function formatTime(value: number) {
   return new Date(value).toLocaleString()
 }
@@ -99,6 +165,38 @@ function formatOptionalTime(value?: number | null) {
 
 function userInitial(user: AppUser) {
   return (user.username || user.email || '?').slice(0, 1).toUpperCase()
+}
+
+function formatElapsed(value?: number | null) {
+  return value == null ? '-' : `${Math.round(value / 1000)} 秒`
+}
+
+function formatDetail(value: Record<string, unknown>) {
+  try {
+    const detail = JSON.stringify(value)
+    return detail === '{}' ? '-' : detail
+  } catch {
+    return '-'
+  }
+}
+
+function renderUserStatus(disabled: boolean) {
+  return <Tag color={disabled ? 'default' : 'success'}>{disabled ? '禁用' : '启用'}</Tag>
+}
+
+function renderRole(role: AppUser['role']) {
+  return <Tag color={role === 'admin' ? 'geekblue' : 'default'}>{role === 'admin' ? '管理员' : '用户'}</Tag>
+}
+
+function renderTaskStatus(status?: string) {
+  const key = status || 'unknown'
+  return <Tag color={TASK_STATUS_COLORS[key] ?? 'default'}>{TASK_STATUS_LABELS[key] ?? status ?? '未知'}</Tag>
+}
+
+function tableLocale(description: string) {
+  return {
+    emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={description} />,
+  }
 }
 
 function Stat({ label, value }: { label: string; value: string | number }) {
@@ -158,19 +256,20 @@ function ActionIcon({ type }: { type: 'edit' | 'disable' | 'more' | 'plus' | 'mi
   )
 }
 
-function RowActionButton({ label, title, active, disabled, onClick, children }: { label: string; title?: string; active?: boolean; disabled?: boolean; onClick: () => void; children: ReactNode }) {
+function RowActionButton({ label, title, disabled, onClick, children }: { label: string; title?: string; disabled?: boolean; onClick: () => void; children: ReactNode }) {
   return (
-    <button
-      type="button"
+    <Button
+      type="text"
+      size="small"
       onClick={onClick}
       disabled={disabled}
-      className={`inline-flex min-w-10 flex-col items-center justify-center gap-0.5 rounded-lg px-1.5 py-1 text-xs transition disabled:cursor-not-allowed disabled:opacity-40 ${active ? 'bg-gray-100 text-gray-900 dark:bg-white/[0.1] dark:text-gray-100' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-white/[0.08] dark:hover:text-gray-100'}`}
+      className="console-row-action"
+      icon={children}
       title={title ?? label}
       aria-label={title ?? label}
     >
-      {children}
-      <span className="leading-none">{label}</span>
-    </button>
+      {label}
+    </Button>
   )
 }
 
@@ -240,7 +339,11 @@ function ProtectedImage({ fileId }: { fileId: string }) {
   }, [fileId])
 
   if (!src) return <div className="h-full w-full bg-gray-100 dark:bg-black/20" />
-  return <img src={src} className="h-full w-full object-cover" alt="" />
+  return <img src={src} className="block h-full w-full object-cover" alt="" />
+}
+
+function toServerLightboxImageId(fileId: string) {
+  return `server:${fileId}`
 }
 
 function generatePassword() {
@@ -263,12 +366,16 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
   const [showCreateUser, setShowCreateUser] = useState(false)
   const [editingUser, setEditingUser] = useState<AppUser | null>(null)
   const [editUserForm, setEditUserForm] = useState(EMPTY_EDIT_USER_FORM)
-  const [openUserMenuId, setOpenUserMenuId] = useState<string | null>(null)
   const [creditTarget, setCreditTarget] = useState<{ user: AppUser; type: 'recharge' | 'refund' } | null>(null)
   const [creditForm, setCreditForm] = useState(EMPTY_CREDIT_FORM)
   const [usageFilters, setUsageFilters] = useState(EMPTY_USAGE_FILTERS)
   const [error, setError] = useState<string | null>(null)
+  const [dialogError, setDialogError] = useState<string | null>(null)
   const [form, setForm] = useState(EMPTY_CREATE_USER_FORM)
+  const [isDarkMode, setIsDarkMode] = useState(() => window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false)
+  const [messageApi, messageContextHolder] = message.useMessage()
+  const [modalApi, modalContextHolder] = Modal.useModal()
+  const setLightboxImageId = useStore((state) => state.setLightboxImageId)
 
   const totals = useMemo(() => ({
     users: users.length,
@@ -332,25 +439,43 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
     })
   }, [])
 
+  useEffect(() => {
+    if (!window.matchMedia) return
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    const syncDarkMode = () => setIsDarkMode(media.matches)
+    syncDarkMode()
+    media.addEventListener('change', syncDarkMode)
+    return () => media.removeEventListener('change', syncDarkMode)
+  }, [])
+
+  const copyText = async (value: string, successText: string) => {
+    try {
+      await copyTextToClipboard(value)
+      messageApi.success(successText)
+    } catch (error) {
+      messageApi.error(getClipboardFailureMessage('复制失败，请检查浏览器剪贴板权限', error))
+    }
+  }
+
   const handleCreateUser = async () => {
-    setError(null)
+    setDialogError(null)
     const credits = Number(form.credits)
     const multiplier = Number(form.multiplier)
     const concurrencyLimit = form.concurrencyLimit.trim() ? Number(form.concurrencyLimit) : null
     if (!form.username.trim() || !form.email.trim() || !form.password.trim()) {
-      setError('请填写用户名、邮箱和密码')
+      setDialogError('请填写用户名、邮箱和密码')
       return
     }
     if (!Number.isFinite(credits) || credits < 0) {
-      setError('用户额度必须是非负数字')
+      setDialogError('用户额度必须是非负数字')
       return
     }
     if (!Number.isFinite(multiplier) || multiplier < 0) {
-      setError('专属倍率必须是非负数字，允许填写 0.2 这类小数')
+      setDialogError('专属倍率必须是非负数字，允许填写 0.2 这类小数')
       return
     }
     if (concurrencyLimit !== null && (!Number.isInteger(concurrencyLimit) || concurrencyLimit <= 0)) {
-      setError('专属并发必须是大于 0 的整数')
+      setDialogError('专属并发必须是大于 0 的整数')
       return
     }
     const result = await createUser({
@@ -362,7 +487,7 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
       concurrencyLimit,
     })
     if (!result.user) {
-      setError(result.error)
+      setDialogError(result.error)
       return
     }
     setForm({
@@ -372,12 +497,13 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
       concurrencyLimit: '',
     })
     setShowCreateUser(false)
+    setDialogError(null)
     await refresh()
+    messageApi.success('用户已创建')
   }
 
   const openEditUser = (user: AppUser) => {
-    setError(null)
-    setOpenUserMenuId(null)
+    setDialogError(null)
     setEditingUser(user)
     setEditUserForm({
       multiplier: String(user.multiplier),
@@ -390,37 +516,42 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
 
   const saveEditingUser = async () => {
     if (!editingUser) return
-    setError(null)
+    setDialogError(null)
     const isEditingAdmin = editingUser.role === 'admin'
     const multiplier = Number(editUserForm.multiplier)
     const concurrencyLimit = editUserForm.concurrencyLimit.trim() ? Number(editUserForm.concurrencyLimit) : null
     if (!Number.isFinite(multiplier) || multiplier < 0) {
-      setError('专属倍率必须是非负数字，允许填写 0.2 这类小数')
+      setDialogError('专属倍率必须是非负数字，允许填写 0.2 这类小数')
       return
     }
     if (concurrencyLimit !== null && (!Number.isInteger(concurrencyLimit) || concurrencyLimit <= 0)) {
-      setError('专属并发必须是大于 0 的整数')
+      setDialogError('专属并发必须是大于 0 的整数')
       return
     }
     const password = editUserForm.password
     if (password && (password.length < 6 || password.length > 72)) {
-      setError('新密码需为 6-72 位')
+      setDialogError('新密码需为 6-72 位')
       return
     }
-    await updateUser(editingUser.id, {
-      multiplier,
-      concurrencyLimit,
-      note: editUserForm.note.trim(),
-      disabled: isEditingAdmin ? editingUser.disabled : editUserForm.disabled,
-      ...(password ? { password } : {}),
-    })
-    setEditingUser(null)
-    await refresh()
+    try {
+      await updateUser(editingUser.id, {
+        multiplier,
+        concurrencyLimit,
+        note: editUserForm.note.trim(),
+        disabled: isEditingAdmin ? editingUser.disabled : editUserForm.disabled,
+        ...(password ? { password } : {}),
+      })
+      setEditingUser(null)
+      setDialogError(null)
+      await refresh()
+      messageApi.success('用户配置已保存')
+    } catch (error) {
+      setDialogError(error instanceof Error ? error.message : '用户配置保存失败')
+    }
   }
 
   const openCreditDialog = (user: AppUser, type: 'recharge' | 'refund') => {
-    setError(null)
-    setOpenUserMenuId(null)
+    setDialogError(null)
     setCreditTarget({ user, type })
     setCreditForm(EMPTY_CREDIT_FORM)
   }
@@ -428,31 +559,45 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
   const toggleUserDisabled = async (user: AppUser) => {
     if (user.role === 'admin') return
     setError(null)
-    setOpenUserMenuId(null)
     await updateUser(user.id, { disabled: !user.disabled })
     await refresh()
+    messageApi.success(user.disabled ? '用户已启用' : '用户已禁用')
   }
 
   const removeUser = async (user: AppUser) => {
     if (user.id === currentUser.id || user.role === 'admin') return
-    if (!window.confirm(`确定要删除用户「${user.username}」吗？该操作会禁用账号并保留历史记录。`)) return
-    setError(null)
-    setOpenUserMenuId(null)
-    await deleteUser(user.id)
-    await refresh()
+    modalApi.confirm({
+      title: `删除用户「${user.username}」？`,
+      content: '该操作会禁用账号并保留历史记录。',
+      okText: '删除',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      async onOk() {
+        setError(null)
+        await deleteUser(user.id)
+        await refresh()
+        messageApi.success('用户已删除')
+      },
+    })
   }
 
   const submitCreditDialog = async () => {
     if (!creditTarget) return
-    setError(null)
+    setDialogError(null)
     const value = Number(creditForm.amount)
     if (!Number.isFinite(value) || value <= 0) {
-      setError('请输入大于 0 的金额')
+      setDialogError('请输入大于 0 的金额')
       return
     }
-    await adjustUserCredits(creditTarget.user.id, value, creditTarget.type, creditForm.note.trim())
-    setCreditTarget(null)
-    await refresh()
+    try {
+      await adjustUserCredits(creditTarget.user.id, value, creditTarget.type, creditForm.note.trim())
+      setCreditTarget(null)
+      setDialogError(null)
+      await refresh()
+      messageApi.success(creditTarget.type === 'recharge' ? '充值已完成' : '退款已完成')
+    } catch (error) {
+      setDialogError(error instanceof Error ? error.message : '额度操作失败')
+    }
   }
 
   const saveSiteSettings = async () => {
@@ -467,6 +612,7 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
     setSystemSettings(settings)
     setSettingsDraft((draft) => ({ ...draft, appName: savedName }))
     onAppNameChange?.(savedName)
+    messageApi.success('基础信息已保存')
   }
 
   const saveAuthSettings = async () => {
@@ -487,6 +633,7 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
       defaultMultiplier,
     })
     setSystemSettings(settings)
+    messageApi.success('注册设置已保存')
   }
 
   const saveQueueSettings = async () => {
@@ -504,6 +651,7 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
       maxQueueSize,
     })
     setSystemSettings(settings)
+    messageApi.success('队列设置已保存')
   }
 
   const saveModelProfiles = async () => {
@@ -518,12 +666,14 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
     }))
     setSystemSettings(settings)
     setModelDrafts(settings.models)
+    messageApi.success('模型服务已保存')
   }
 
   const applyUsageFilters = async () => {
     setError(null)
     try {
       setUsageRecords(await readUsageRecords(true, buildUsageFilters()))
+      messageApi.success('筛选已应用')
     } catch (error) {
       setError(error instanceof Error ? error.message : '消费记录加载失败')
     }
@@ -537,422 +687,715 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
     { key: 'audit', label: '审计日志', desc: '关键操作记录' },
   ]
 
-  return (
-    <main className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
-      <header className="safe-area-top sticky top-0 z-40 border-b border-gray-200 bg-white/80 backdrop-blur dark:border-white/[0.08] dark:bg-gray-950/80">
-        <div className="safe-area-x safe-header-inner mx-auto flex max-w-7xl items-center justify-between">
-          <div>
-            <h1 className="text-[17px] font-bold tracking-tight">控制台</h1>
-            <p className="text-xs text-gray-500 dark:text-gray-400">用户管理、额度和计费记录</p>
-          </div>
-          <button onClick={onClose} className="rounded-xl bg-gray-900 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-gray-800 dark:bg-white dark:text-gray-950 dark:hover:bg-gray-200">
-            返回生图
-          </button>
+  const compactPagination = { pageSize: 8, showSizeChanger: false, hideOnSinglePage: true }
+
+  const userColumns: ColumnsType<AppUser> = [
+    {
+      title: '账号',
+      dataIndex: 'username',
+      key: 'account',
+      width: 220,
+      fixed: 'left',
+      render: (_, user) => (
+        <div className="min-w-0">
+          <div className="truncate font-medium text-gray-800 dark:text-gray-100" title={user.username}>{user.username}</div>
+          <div className="truncate text-xs text-gray-500" title={user.email}>{user.email}</div>
         </div>
-      </header>
+      ),
+    },
+    {
+      title: '角色',
+      dataIndex: 'role',
+      key: 'role',
+      width: 92,
+      render: renderRole,
+    },
+    {
+      title: '状态',
+      dataIndex: 'disabled',
+      key: 'status',
+      width: 88,
+      render: renderUserStatus,
+    },
+    {
+      title: 'Credits',
+      dataIndex: 'credits',
+      key: 'credits',
+      width: 108,
+      align: 'right',
+      render: (value: number) => <span className="font-semibold">{value.toFixed(2)}</span>,
+    },
+    {
+      title: '倍率',
+      dataIndex: 'multiplier',
+      key: 'multiplier',
+      width: 88,
+      align: 'right',
+    },
+    {
+      title: '并发',
+      dataIndex: 'concurrencyLimit',
+      key: 'concurrencyLimit',
+      width: 88,
+      render: (value?: number | null) => value ?? '默认',
+    },
+    {
+      title: '最后登录',
+      dataIndex: 'lastLoginAt',
+      key: 'lastLoginAt',
+      width: 160,
+      render: formatOptionalTime,
+    },
+    {
+      title: '最后活跃',
+      dataIndex: 'lastActiveAt',
+      key: 'lastActiveAt',
+      width: 160,
+      render: formatOptionalTime,
+    },
+    {
+      title: '最后使用',
+      dataIndex: 'lastUsedAt',
+      key: 'lastUsedAt',
+      width: 160,
+      render: formatOptionalTime,
+    },
+    {
+      title: '备注',
+      dataIndex: 'note',
+      key: 'note',
+      width: 180,
+      ellipsis: true,
+      render: (value?: string) => <span title={value || ''}>{value || '-'}</span>,
+    },
+    {
+      title: '创建时间',
+      dataIndex: 'createdAt',
+      key: 'createdAt',
+      width: 160,
+      render: formatTime,
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      width: 230,
+      fixed: 'right',
+      render: (_, user) => {
+        const isSelf = user.id === currentUser.id
+        const isAdmin = user.role === 'admin'
+        const menuItems = [
+          { key: 'recharge', label: '充值', icon: <span className="text-emerald-500"><ActionIcon type="plus" /></span> },
+          { key: 'refund', label: '退款', icon: <span className="text-orange-500"><ActionIcon type="minus" /></span> },
+          !isAdmin ? { type: 'divider' as const } : null,
+          !isAdmin ? { key: 'delete', label: '删除', danger: true, disabled: isSelf, icon: <ActionIcon type="delete" /> } : null,
+        ].filter(Boolean) as MenuProps['items']
 
-      <div className="safe-area-x mx-auto grid max-w-7xl items-start gap-5 py-5 lg:grid-cols-[240px_minmax(0,1fr)]">
-        <aside className="self-start overflow-hidden rounded-xl border border-gray-200/70 bg-white shadow-sm dark:border-white/[0.08] dark:bg-gray-900">
-          <div className="border-b border-gray-200/70 px-4 py-4 dark:border-white/[0.08]">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-400">系统管理</div>
-            <div className="mt-1.5 text-sm font-bold text-gray-900 dark:text-gray-100">管理控制台</div>
-          </div>
-          {navItems.map((item) => (
-            <button
-              key={item.key}
-              onClick={() => setTab(item.key)}
-              className={`relative flex w-full items-center gap-3 border-b border-gray-100 px-4 py-3 text-left transition last:border-b-0 dark:border-white/[0.06] ${tab === item.key ? 'bg-blue-50/80 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-white/[0.04] dark:hover:text-gray-200'}`}
+        return (
+          <Space size={4} wrap={false}>
+            <RowActionButton label="编辑" onClick={() => openEditUser(user)}>
+              <ActionIcon type="edit" />
+            </RowActionButton>
+            {!isAdmin && (
+              <RowActionButton label={user.disabled ? '启用' : '禁用'} onClick={() => toggleUserDisabled(user)}>
+                <ActionIcon type="disable" />
+              </RowActionButton>
+            )}
+            <Dropdown
+              trigger={['click']}
+              menu={{
+                items: menuItems,
+                onClick: ({ key }) => {
+                  if (key === 'recharge') openCreditDialog(user, 'recharge')
+                  if (key === 'refund') openCreditDialog(user, 'refund')
+                  if (key === 'delete') void removeUser(user)
+                },
+              }}
             >
-              {tab === item.key && <span className="absolute left-0 top-2.5 bottom-2.5 w-1 rounded-r-full bg-blue-500" />}
-              <span className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${tab === item.key ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-500 dark:bg-white/[0.06] dark:text-gray-400'}`}>
-                <NavIcon type={item.key} />
-              </span>
-              <span className="min-w-0">
-                <span className="block text-sm font-semibold">{item.label}</span>
-                <span className="mt-0.5 block text-xs">{item.desc}</span>
-              </span>
+              <Button type="text" size="small" icon={<ActionIcon type="more" />}>更多</Button>
+            </Dropdown>
+          </Space>
+        )
+      },
+    },
+  ]
+
+  const creditColumns: ColumnsType<CreditRecord> = [
+    {
+      title: '用户',
+      key: 'user',
+      width: 180,
+      render: (_, record) => {
+        const user = users.find((item) => item.id === record.userId)
+        return user?.username ?? record.username ?? '未知用户'
+      },
+    },
+    {
+      title: '类型',
+      dataIndex: 'type',
+      key: 'type',
+      width: 96,
+      render: (value: CreditRecord['type']) => <Tag color={value === 'recharge' ? 'blue' : 'orange'}>{value === 'recharge' ? '充值' : '退款'}</Tag>,
+    },
+    {
+      title: '金额',
+      key: 'amount',
+      dataIndex: 'amount',
+      width: 120,
+      align: 'right',
+      render: (value: number, record) => <span className={record.type === 'recharge' ? 'text-blue-600' : 'text-orange-600'}>{record.type === 'recharge' ? '+' : '-'}{value}</span>,
+    },
+    {
+      title: '管理员',
+      dataIndex: 'operatorUsername',
+      key: 'operatorUsername',
+      width: 150,
+      ellipsis: true,
+    },
+    {
+      title: '备注',
+      dataIndex: 'note',
+      key: 'note',
+      width: 300,
+      ellipsis: true,
+      render: (value?: string) => <span title={value || ''}>{value || '-'}</span>,
+    },
+    {
+      title: '时间',
+      dataIndex: 'createdAt',
+      key: 'createdAt',
+      width: 170,
+      render: formatTime,
+    },
+  ]
+
+  const usageColumns: ColumnsType<UsageRecord> = [
+    {
+      title: '图片',
+      key: 'images',
+      width: 118,
+      fixed: 'left',
+      render: (_, record) => {
+        const images = record.imageFiles ?? []
+        const previewImages = images.slice(0, 4)
+        const lightboxImageList = images.map((image) => toServerLightboxImageId(image.id))
+        const openImagePreview = (fileId: string) => {
+          setLightboxImageId(toServerLightboxImageId(fileId), lightboxImageList)
+        }
+        if (previewImages.length === 0) {
+          return (
+            <div className="flex h-16 w-24 items-center justify-center rounded-lg bg-gray-100 text-xs text-gray-400 dark:bg-black/20">
+              无图片
+            </div>
+          )
+        }
+        if (previewImages.length === 1) {
+          return (
+            <button
+              type="button"
+              className="block h-16 w-24 cursor-pointer overflow-hidden rounded-lg border-0 bg-gray-100 p-0 text-left transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 dark:bg-black/20"
+              onClick={() => openImagePreview(previewImages[0].id)}
+              title="点击预览"
+              aria-label="预览图片"
+            >
+              <ProtectedImage fileId={previewImages[0].id} />
             </button>
-          ))}
-        </aside>
-
-        <section className="min-w-0 overflow-hidden rounded-xl border border-gray-200/70 bg-white shadow-sm dark:border-white/[0.08] dark:bg-gray-900">
-          <div className="border-b border-gray-200/70 px-5 py-5 dark:border-white/[0.08]">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-xl font-bold tracking-tight">
-                  {tab === 'users' ? '用户管理' : tab === 'credits' ? '充值记录' : tab === 'usage' ? '消费记录' : tab === 'audit' ? '审计日志' : '系统设置'}
-                </h2>
-                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  {tab === 'users' ? '创建用户，查看账号信息，并通过弹窗调整用户配置。' : tab === 'credits' ? '查看每次充值和退款的时间、金额、管理员操作账号。' : tab === 'usage' ? '查看用户生图扣费、倍率和质量明细。' : tab === 'audit' ? '查看关键管理操作和任务操作记录。' : '配置系统名称、开放注册、默认额度和模型服务。'}
-                </p>
-              </div>
-              {tab === 'users' && (
-                <button onClick={() => setShowCreateUser(true)} className="rounded-xl bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">
-                  创建用户
-                </button>
-              )}
-            </div>
+          )
+        }
+        return (
+          <div className="grid h-16 w-24 grid-cols-2 gap-1 overflow-hidden rounded-lg bg-gray-100 dark:bg-black/20">
+            {previewImages.map((image, index) => (
+              <button
+                key={image.id}
+                type="button"
+                className={`${previewImages.length === 3 && index === 2 ? 'col-span-2 ' : ''}h-full w-full cursor-pointer overflow-hidden rounded-[6px] border-0 p-0 transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50`}
+                onClick={() => openImagePreview(image.id)}
+                title="点击预览"
+                aria-label={`预览第 ${index + 1} 张图片`}
+              >
+                <ProtectedImage fileId={image.id} />
+              </button>
+            ))}
           </div>
+        )
+      },
+    },
+    {
+      title: '用户',
+      key: 'user',
+      width: 140,
+      render: (_, record) => {
+        const user = users.find((item) => item.id === record.userId)
+        return user?.username ?? record.username ?? '未知用户'
+      },
+    },
+    {
+      title: '状态',
+      dataIndex: 'taskStatus',
+      key: 'taskStatus',
+      width: 96,
+      render: renderTaskStatus,
+    },
+    {
+      title: 'Credits',
+      dataIndex: 'totalCredits',
+      key: 'totalCredits',
+      width: 100,
+      align: 'right',
+      render: (value: number) => <span className="font-semibold">{value}</span>,
+    },
+    {
+      title: '模型',
+      dataIndex: 'apiModel',
+      key: 'apiModel',
+      width: 190,
+      ellipsis: true,
+      render: (value?: string) => <span title={value || ''}>{value || '-'}</span>,
+    },
+    {
+      title: '质量',
+      dataIndex: 'quality',
+      key: 'quality',
+      width: 88,
+      render: (value: UsageRecord['quality']) => <Tag>{value}</Tag>,
+    },
+    {
+      title: '图片数',
+      dataIndex: 'imageCount',
+      key: 'imageCount',
+      width: 88,
+      align: 'right',
+    },
+    {
+      title: '倍率',
+      dataIndex: 'multiplier',
+      key: 'multiplier',
+      width: 82,
+      align: 'right',
+    },
+    {
+      title: '耗时',
+      dataIndex: 'elapsed',
+      key: 'elapsed',
+      width: 96,
+      render: formatElapsed,
+    },
+    {
+      title: '提示词',
+      dataIndex: 'prompt',
+      key: 'prompt',
+      width: 320,
+      ellipsis: true,
+      render: (value: string) => <span title={value}>{value}</span>,
+    },
+    {
+      title: '时间',
+      dataIndex: 'createdAt',
+      key: 'createdAt',
+      width: 170,
+      render: formatTime,
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      width: 190,
+      fixed: 'right',
+      render: (_, record) => {
+        const firstImage = record.imageFiles?.[0]
+        return (
+          <Space size={4} wrap>
+            <Button size="small" onClick={() => void copyText(record.prompt, '提示词已复制')}>复制提示词</Button>
+            {firstImage && (
+              <Button
+                size="small"
+                type="link"
+                onClick={() => {
+                  void createProtectedImageLink(firstImage.id)
+                    .then((link) => copyText(link, '图片链接已复制'))
+                    .catch(() => messageApi.error('图片链接生成失败'))
+                }}
+              >
+                复制图片链接
+              </Button>
+            )}
+          </Space>
+        )
+      },
+    },
+  ]
 
-          <div className="grid gap-3 border-b border-gray-200/70 bg-gray-50/60 p-4 dark:border-white/[0.08] dark:bg-white/[0.02] sm:grid-cols-3">
-            <Stat label="用户总数" value={totals.users} />
-            <Stat label="启用账号" value={totals.enabled} />
-            <Stat label="总 Credits" value={totals.credits} />
+  const auditColumns: ColumnsType<AuditLog> = [
+    {
+      title: '操作',
+      dataIndex: 'action',
+      key: 'action',
+      width: 190,
+      fixed: 'left',
+      render: (value: string) => <Tag color="geekblue">{value}</Tag>,
+    },
+    {
+      title: '操作人',
+      dataIndex: 'actorUsername',
+      key: 'actorUsername',
+      width: 150,
+      render: (value?: string) => value ?? '系统',
+    },
+    {
+      title: '对象',
+      key: 'target',
+      width: 240,
+      ellipsis: true,
+      render: (_, log) => <span title={`${log.targetType}${log.targetId ? `/${log.targetId}` : ''}`}>{log.targetType}{log.targetId ? `/${log.targetId}` : ''}</span>,
+    },
+    {
+      title: '明细',
+      dataIndex: 'detail',
+      key: 'detail',
+      width: 360,
+      ellipsis: true,
+      render: (value: Record<string, unknown>) => {
+        const detail = formatDetail(value)
+        return <span title={detail}>{detail}</span>
+      },
+    },
+    {
+      title: '时间',
+      dataIndex: 'createdAt',
+      key: 'createdAt',
+      width: 170,
+      render: formatTime,
+    },
+  ]
+
+  return (
+    <ConfigProvider
+      locale={zhCN}
+      componentSize="middle"
+      theme={{
+        algorithm: isDarkMode ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
+        token: {
+          borderRadius: 8,
+          colorPrimary: '#2563eb',
+          fontFamily: 'var(--font-ui-sans)',
+        },
+        components: {
+          Button: { borderRadius: 8 },
+          Table: {
+            borderRadius: 8,
+            cellPaddingBlockSM: 8,
+            cellPaddingInlineSM: 10,
+            headerBg: isDarkMode ? '#111827' : '#f9fafb',
+          },
+        },
+      }}
+    >
+      <main className="console-antd-scope min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
+        {messageContextHolder}
+        {modalContextHolder}
+        <header className="safe-area-top sticky top-0 z-40 border-b border-gray-200 bg-white/80 backdrop-blur dark:border-white/[0.08] dark:bg-gray-950/80">
+          <div className="safe-area-x safe-header-inner mx-auto flex max-w-7xl items-center justify-between">
+            <div>
+              <h1 className="text-[17px] font-bold tracking-tight">控制台</h1>
+              <p className="text-xs text-gray-500 dark:text-gray-400">用户管理、额度和计费记录</p>
+            </div>
+            <Button icon={<ArrowLeftOutlined />} onClick={onClose}>返回生图</Button>
           </div>
+        </header>
 
-          {error && <div className="mx-5 mt-4 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600 dark:bg-red-500/10 dark:text-red-300">{error}</div>}
+        <div className="safe-area-x mx-auto grid max-w-7xl items-start gap-4 py-5 lg:grid-cols-[196px_minmax(0,1fr)]">
+          <aside className="self-start overflow-hidden rounded-xl border border-gray-200/70 bg-white shadow-sm dark:border-white/[0.08] dark:bg-gray-900 lg:sticky lg:top-20">
+            {navItems.map((item) => (
+              <Button
+                key={item.key}
+                type="text"
+                block
+                onClick={() => setTab(item.key)}
+                className={`console-nav-button relative text-left transition ${tab === item.key ? 'is-active text-blue-700 dark:text-blue-300' : 'text-gray-500 dark:text-gray-400'}`}
+              >
+                {tab === item.key && <span className="console-nav-indicator absolute left-0 top-2.5 bottom-2.5 rounded-r-full bg-blue-500" />}
+                <span className="console-nav-content flex items-center gap-2.5 px-3 py-2.5">
+                  <span className={`flex h-7 w-7 items-center justify-center rounded-lg transition ${tab === item.key ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-500 dark:bg-white/[0.06] dark:text-gray-400'}`}>
+                    <NavIcon type={item.key} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold">{item.label}</span>
+                    <span className="mt-0.5 block text-xs">{item.desc}</span>
+                  </span>
+                </span>
+              </Button>
+            ))}
+          </aside>
 
-          {tab === 'users' && (
-            <div className="p-5">
-              <div className="overflow-x-auto rounded-xl border border-gray-200/70 dark:border-white/[0.08]">
-                <div className="min-w-[1280px]">
-                  <table className="w-full table-fixed text-left text-sm">
-                    <colgroup>
-                      <col className="w-[15%]" />
-                      <col className="w-[6%]" />
-                      <col className="w-[6%]" />
-                      <col className="w-[8%]" />
-                      <col className="w-[7%]" />
-                      <col className="w-[7%]" />
-                      <col className="w-[12%]" />
-                      <col className="w-[12%]" />
-                      <col className="w-[12%]" />
-                      <col className="w-[9%]" />
-                      <col className="w-[10%]" />
-                      <col className="w-[9%]" />
-                    </colgroup>
-                    <thead className="bg-gray-50 text-xs text-gray-500 dark:bg-gray-900 dark:text-gray-400">
-                      <tr className="shadow-[0_1px_0_rgba(229,231,235,0.9)] dark:shadow-[0_1px_0_rgba(255,255,255,0.08)]">
-                        <th className="px-3 py-2.5">账号</th>
-                        <th className="px-3 py-2.5">角色</th>
-                        <th className="px-3 py-2.5">状态</th>
-                        <th className="px-3 py-2.5">Credits</th>
-                        <th className="px-3 py-2.5">专属倍率</th>
-                        <th className="px-3 py-2.5">专属并发</th>
-                        <th className="px-3 py-2.5">最后登录</th>
-                        <th className="px-3 py-2.5">最后活跃</th>
-                        <th className="px-3 py-2.5">最后使用</th>
-                        <th className="px-3 py-2.5">备注</th>
-                        <th className="px-3 py-2.5">创建时间</th>
-                        <th className="px-3 py-2.5">操作</th>
-                      </tr>
-                    </thead>
-                  </table>
-                  <div className="max-h-[520px] overflow-y-visible">
-                    <table className="w-full table-fixed text-left text-sm">
-                      <colgroup>
-                        <col className="w-[15%]" />
-                        <col className="w-[6%]" />
-                        <col className="w-[6%]" />
-                        <col className="w-[8%]" />
-                        <col className="w-[7%]" />
-                        <col className="w-[7%]" />
-                        <col className="w-[12%]" />
-                        <col className="w-[12%]" />
-                        <col className="w-[12%]" />
-                        <col className="w-[9%]" />
-                        <col className="w-[10%]" />
-                        <col className="w-[9%]" />
-                      </colgroup>
-                      <tbody>
-                        {users.map((user) => {
-                          const isSelf = user.id === currentUser.id
-                          const isAdmin = user.role === 'admin'
-                          return (
-                            <tr key={user.id} className="border-b border-gray-100 transition last:border-b-0 hover:bg-gray-50/70 dark:border-white/[0.06] dark:hover:bg-white/[0.03]">
-                              <td className="px-3 py-2.5">
-                                <div className="font-medium text-gray-800 dark:text-gray-100">{user.username}</div>
-                                <div className="text-xs text-gray-500">{user.email}</div>
-                              </td>
-                              <td className="px-3 py-2.5">{user.role}</td>
-                              <td className="px-3 py-2.5">
-                                <span className={`rounded-lg px-2.5 py-1 text-xs font-medium ${user.disabled ? 'bg-gray-100 text-gray-600 dark:bg-white/[0.08] dark:text-gray-300' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'}`}>
-                                  {user.disabled ? '禁用' : '启用'}
-                                </span>
-                              </td>
-                              <td className="px-3 py-2.5 font-semibold">{user.credits.toFixed(2)}</td>
-                              <td className="px-3 py-2.5">{user.multiplier}</td>
-                              <td className="px-3 py-2.5">{user.concurrencyLimit ?? '默认'}</td>
-                              <td className="px-3 py-2.5 text-xs text-gray-500">{formatOptionalTime(user.lastLoginAt)}</td>
-                              <td className="px-3 py-2.5 text-xs text-gray-500">{formatOptionalTime(user.lastActiveAt)}</td>
-                              <td className="px-3 py-2.5 text-xs text-gray-500">{formatOptionalTime(user.lastUsedAt)}</td>
-                              <td className="px-3 py-2.5">
-                                <div className="truncate text-xs text-gray-500" title={user.note || ''}>{user.note || '-'}</div>
-                              </td>
-                              <td className="px-3 py-2.5 text-xs text-gray-500">{formatTime(user.createdAt)}</td>
-                              <td className="px-3 py-2.5">
-                                <div className="relative flex items-center gap-1.5">
-                                  <RowActionButton label="编辑" onClick={() => openEditUser(user)}>
-                                    <ActionIcon type="edit" />
-                                  </RowActionButton>
-                                  {!isAdmin && (
-                                    <RowActionButton label={user.disabled ? '启用' : '禁用'} onClick={() => toggleUserDisabled(user)}>
-                                      <ActionIcon type="disable" />
-                                    </RowActionButton>
-                                  )}
-                                  <RowActionButton label="更多" active={openUserMenuId === user.id} onClick={() => setOpenUserMenuId((current) => current === user.id ? null : user.id)}>
-                                    <ActionIcon type="more" />
-                                  </RowActionButton>
-                                  {openUserMenuId === user.id && (
-                                    <div className="absolute right-0 top-9 z-30 w-40 overflow-hidden rounded-xl border border-gray-200/70 bg-white py-1.5 text-sm shadow-xl dark:border-white/[0.08] dark:bg-gray-900">
-                                      <button type="button" onClick={() => openCreditDialog(user, 'recharge')} className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-gray-700 transition hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-white/[0.05]">
-                                        <span className="text-emerald-500"><ActionIcon type="plus" /></span>
-                                        <span>充值</span>
-                                      </button>
-                                      <button type="button" onClick={() => openCreditDialog(user, 'refund')} className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-gray-700 transition hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-white/[0.05]">
-                                        <span className="text-orange-500"><ActionIcon type="minus" /></span>
-                                        <span>退款</span>
-                                      </button>
-                                      <div className="my-1 border-t border-gray-100 dark:border-white/[0.06]" />
-                                      {!isAdmin && (
-                                        <button type="button" disabled={isSelf} onClick={() => removeUser(user)} className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-red-300 dark:hover:bg-red-500/10">
-                                          <ActionIcon type="delete" />
-                                          <span>删除</span>
-                                        </button>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {tab === 'credits' && (
-            <div className="p-5">
-              {creditRecords.length === 0 ? <EmptyState text="暂无充值或退款记录" /> : (
-                <div className="grid max-h-[520px] gap-2 overflow-auto pr-1">
-                  {creditRecords.map((record) => {
-                    const user = users.find((item) => item.id === record.userId)
-                    return (
-                      <div key={record.id} className="grid gap-2 rounded-xl border border-gray-100 bg-white px-3.5 py-3 text-sm shadow-sm dark:border-white/[0.06] dark:bg-white/[0.03] sm:grid-cols-[1fr_auto_auto] sm:items-center">
-                        <div>
-                          <div className="font-medium text-gray-800 dark:text-gray-100">{user?.username ?? '未知用户'} · {record.type === 'recharge' ? '充值' : '退款'} {record.amount} Credits</div>
-                          <div className="mt-0.5 text-xs text-gray-500">管理员：{record.operatorUsername}</div>
-                          {record.note ? <div className="mt-1 line-clamp-2 text-xs text-gray-500">备注：{record.note}</div> : null}
-                        </div>
-                        <div className="text-xs text-gray-500">{formatTime(record.createdAt)}</div>
-                        <span className={`rounded-lg px-2.5 py-1 text-xs font-medium ${record.type === 'recharge' ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300' : 'bg-gray-100 text-gray-600 dark:bg-white/[0.08] dark:text-gray-300'}`}>
-                          {record.type === 'recharge' ? '+' : '-'}{record.amount}
-                        </span>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-
-          {tab === 'usage' && (
-            <div className="p-5">
-              <div className="mb-4 grid gap-2 rounded-xl border border-gray-200/70 bg-gray-50 p-3 dark:border-white/[0.08] dark:bg-white/[0.03] lg:grid-cols-[1.1fr_1fr_120px_130px_1fr_1fr_auto_auto]">
-                <select
-                  value={usageFilters.userId}
-                  onChange={(event) => setUsageFilters((filters) => ({ ...filters, userId: event.target.value }))}
-                  className="rounded-lg border border-gray-200/70 bg-white px-3 py-2 text-sm outline-none dark:border-white/[0.08] dark:bg-gray-900"
-                >
-                  <option value="">全部用户</option>
-                  {users.map((user) => <option key={user.id} value={user.id}>{user.username}</option>)}
-                </select>
-                <input
-                  value={usageFilters.model}
-                  onChange={(event) => setUsageFilters((filters) => ({ ...filters, model: event.target.value }))}
-                  placeholder="模型"
-                  className="rounded-lg border border-gray-200/70 bg-white px-3 py-2 text-sm outline-none dark:border-white/[0.08] dark:bg-gray-900"
-                />
-                <select
-                  value={usageFilters.quality}
-                  onChange={(event) => setUsageFilters((filters) => ({ ...filters, quality: event.target.value }))}
-                  className="rounded-lg border border-gray-200/70 bg-white px-3 py-2 text-sm outline-none dark:border-white/[0.08] dark:bg-gray-900"
-                >
-                  <option value="">全部质量</option>
-                  <option value="auto">auto</option>
-                  <option value="low">low</option>
-                  <option value="medium">medium</option>
-                  <option value="high">high</option>
-                </select>
-                <select
-                  value={usageFilters.status}
-                  onChange={(event) => setUsageFilters((filters) => ({ ...filters, status: event.target.value }))}
-                  className="rounded-lg border border-gray-200/70 bg-white px-3 py-2 text-sm outline-none dark:border-white/[0.08] dark:bg-gray-900"
-                >
-                  <option value="">全部状态</option>
-                  <option value="queued">排队中</option>
-                  <option value="running">生成中</option>
-                  <option value="done">已完成</option>
-                  <option value="error">失败</option>
-                  <option value="cancelled">已取消</option>
-                </select>
-                <input
-                  value={usageFilters.keyword}
-                  onChange={(event) => setUsageFilters((filters) => ({ ...filters, keyword: event.target.value }))}
-                  placeholder="提示词关键词"
-                  className="rounded-lg border border-gray-200/70 bg-white px-3 py-2 text-sm outline-none dark:border-white/[0.08] dark:bg-gray-900"
-                />
-                <div className="grid grid-cols-2 gap-2">
-                  <input
-                    type="date"
-                    value={usageFilters.from}
-                    onChange={(event) => setUsageFilters((filters) => ({ ...filters, from: event.target.value }))}
-                    className="min-w-0 rounded-lg border border-gray-200/70 bg-white px-3 py-2 text-sm outline-none dark:border-white/[0.08] dark:bg-gray-900"
-                  />
-                  <input
-                    type="date"
-                    value={usageFilters.to}
-                    onChange={(event) => setUsageFilters((filters) => ({ ...filters, to: event.target.value }))}
-                    className="min-w-0 rounded-lg border border-gray-200/70 bg-white px-3 py-2 text-sm outline-none dark:border-white/[0.08] dark:bg-gray-900"
-                  />
-                </div>
-                <button onClick={applyUsageFilters} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">筛选</button>
-                <button
+          <section className="min-w-0 overflow-hidden rounded-xl border border-gray-200/70 bg-white shadow-sm dark:border-white/[0.08] dark:bg-gray-900">
+            {tab === 'users' && (
+              <div className="flex justify-end border-b border-gray-200/70 px-5 py-4 dark:border-white/[0.08]">
+                <Button
+                  type="primary"
+                  icon={<UserAddOutlined />}
                   onClick={() => {
-                    setUsageFilters(EMPTY_USAGE_FILTERS)
-                    void readUsageRecords(true).then(setUsageRecords).catch((error) => setError(error instanceof Error ? error.message : '消费记录加载失败'))
+                    setDialogError(null)
+                    setShowCreateUser(true)
                   }}
-                  className="rounded-lg bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-700 dark:bg-white/[0.08] dark:text-gray-200"
                 >
-                  清空
-                </button>
+                  创建用户
+                </Button>
               </div>
-              {usageRecords.length === 0 ? <EmptyState text="暂无消费记录" /> : (
-                <div className="grid max-h-[560px] gap-3 overflow-auto pr-1">
-                  {usageRecords.map((record) => {
-                    const user = users.find((item) => item.id === record.userId)
-                    return (
-                      <div key={record.id} className="grid gap-3 rounded-xl border border-gray-100 bg-white p-3 text-sm shadow-sm dark:border-white/[0.06] dark:bg-white/[0.03] sm:grid-cols-[168px_minmax(0,1fr)]">
-                        <div className="grid h-32 grid-cols-2 gap-1 overflow-hidden rounded-lg bg-gray-100 dark:bg-black/20">
-                          {(record.imageFiles ?? []).slice(0, 4).map((image) => (
-                            <ProtectedImage key={image.id} fileId={image.id} />
-                          ))}
-                          {(!record.imageFiles || record.imageFiles.length === 0) && (
-                            <div className="col-span-2 flex items-center justify-center text-xs text-gray-400">无图片</div>
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="font-medium text-gray-800 dark:text-gray-100">{user?.username ?? '未知用户'} · {record.totalCredits} Credits</div>
-                            <div className="text-xs text-gray-500">{formatTime(record.createdAt)}</div>
-                          </div>
-                          <div className="mt-1 flex flex-wrap gap-1.5 text-xs text-gray-500">
-                            {record.apiModel && <span className="rounded bg-gray-100 px-2 py-0.5 dark:bg-white/[0.06]">{record.apiModel}</span>}
-                            <span className="rounded bg-gray-100 px-2 py-0.5 dark:bg-white/[0.06]">质量 {record.quality}</span>
-                            <span className="rounded bg-gray-100 px-2 py-0.5 dark:bg-white/[0.06]">{record.imageCount} 张</span>
-                            <span className="rounded bg-gray-100 px-2 py-0.5 dark:bg-white/[0.06]">倍率 {record.multiplier}</span>
-                            {record.elapsed != null && <span className="rounded bg-gray-100 px-2 py-0.5 dark:bg-white/[0.06]">耗时 {Math.round(record.elapsed / 1000)} 秒</span>}
-                          </div>
-                          <div className="mt-2 line-clamp-2 text-xs leading-relaxed text-gray-500">{record.prompt}</div>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            <button onClick={() => navigator.clipboard.writeText(record.prompt)} className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:bg-white/[0.08] dark:text-gray-200">复制提示词</button>
-                            {(record.imageFiles ?? []).slice(0, 1).map((image) => (
-                              <button key={image.id} onClick={async () => navigator.clipboard.writeText(await createProtectedImageLink(image.id))} className="rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-medium text-blue-600 dark:bg-blue-500/10 dark:text-blue-300">复制图片链接</button>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
+            )}
+
+            <div className="grid gap-3 border-b border-gray-200/70 bg-gray-50/60 p-4 dark:border-white/[0.08] dark:bg-white/[0.02] sm:grid-cols-3">
+              <Stat label="用户总数" value={totals.users} />
+              <Stat label="启用账号" value={totals.enabled} />
+              <Stat label="总 Credits" value={totals.credits} />
             </div>
-          )}
+
+            {error && (
+              <div className="mx-5 mt-4">
+                <Alert type="error" showIcon title={error} />
+              </div>
+            )}
+
+            {tab === 'users' && (
+              <div className="p-5">
+                <Table<AppUser>
+                  className="console-compact-table"
+                  rowKey="id"
+                  size="small"
+                  columns={userColumns}
+                  dataSource={users}
+                  pagination={compactPagination}
+                  scroll={{ x: 1660, y: TABLE_SCROLL_Y }}
+                  locale={tableLocale('暂无用户')}
+                />
+              </div>
+            )}
+
+            {tab === 'credits' && (
+              <div className="p-5">
+                <Table<CreditRecord>
+                  className="console-compact-table"
+                  rowKey="id"
+                  size="small"
+                  columns={creditColumns}
+                  dataSource={creditRecords}
+                  pagination={compactPagination}
+                  scroll={{ x: 1010, y: TABLE_SCROLL_Y }}
+                  locale={tableLocale('暂无充值或退款记录')}
+                />
+              </div>
+            )}
+
+            {tab === 'usage' && (
+              <div className="p-5">
+                <Form layout="vertical" className="console-filter-form mb-4 rounded-xl border border-gray-200/70 bg-gray-50 p-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <Form.Item label="用户" className="mb-0">
+                      <Select
+                        value={usageFilters.userId}
+                        options={[{ value: '', label: '全部用户' }, ...users.map((user) => ({ value: user.id, label: user.username }))]}
+                        onChange={(value) => setUsageFilters((filters) => ({ ...filters, userId: value }))}
+                      />
+                    </Form.Item>
+                    <Form.Item label="模型" className="mb-0">
+                      <Input
+                        value={usageFilters.model}
+                        placeholder="模型 ID"
+                        onChange={(event) => setUsageFilters((filters) => ({ ...filters, model: event.target.value }))}
+                      />
+                    </Form.Item>
+                    <Form.Item label="质量" className="mb-0">
+                      <Select
+                        value={usageFilters.quality}
+                        options={QUALITY_OPTIONS}
+                        onChange={(value) => setUsageFilters((filters) => ({ ...filters, quality: value }))}
+                      />
+                    </Form.Item>
+                    <Form.Item label="状态" className="mb-0">
+                      <Select
+                        value={usageFilters.status}
+                        options={TASK_STATUS_OPTIONS}
+                        onChange={(value) => setUsageFilters((filters) => ({ ...filters, status: value }))}
+                      />
+                    </Form.Item>
+                    <Form.Item label="提示词" className="mb-0">
+                      <Input
+                        value={usageFilters.keyword}
+                        placeholder="提示词关键词"
+                        onChange={(event) => setUsageFilters((filters) => ({ ...filters, keyword: event.target.value }))}
+                      />
+                    </Form.Item>
+                    <Form.Item label="开始日期" className="mb-0">
+                      <DatePicker
+                        className="w-full"
+                        value={usageFilters.from ? dayjs(usageFilters.from) : null}
+                        onChange={(value) => setUsageFilters((filters) => ({ ...filters, from: value ? value.format('YYYY-MM-DD') : '' }))}
+                      />
+                    </Form.Item>
+                    <Form.Item label="结束日期" className="mb-0">
+                      <DatePicker
+                        className="w-full"
+                        value={usageFilters.to ? dayjs(usageFilters.to) : null}
+                        onChange={(value) => setUsageFilters((filters) => ({ ...filters, to: value ? value.format('YYYY-MM-DD') : '' }))}
+                      />
+                    </Form.Item>
+                    <Form.Item label=" " colon={false} className="mb-0 sm:col-span-2 xl:col-span-1">
+                      <div className="flex justify-end">
+                        <Space.Compact>
+                          <Button type="primary" onClick={applyUsageFilters}>筛选</Button>
+                          <Button
+                            onClick={() => {
+                              setUsageFilters(EMPTY_USAGE_FILTERS)
+                              void readUsageRecords(true)
+                                .then((records) => {
+                                  setUsageRecords(records)
+                                  messageApi.success('筛选已清空')
+                                })
+                                .catch((error) => setError(error instanceof Error ? error.message : '消费记录加载失败'))
+                            }}
+                          >
+                            清空
+                          </Button>
+                        </Space.Compact>
+                      </div>
+                    </Form.Item>
+                  </div>
+                </Form>
+                <Table<UsageRecord>
+                  className="console-compact-table"
+                  rowKey="id"
+                  size="small"
+                  columns={usageColumns}
+                  dataSource={usageRecords}
+                  pagination={{ ...compactPagination, pageSize: 6 }}
+                  scroll={{ x: 1660, y: TABLE_SCROLL_Y }}
+                  locale={tableLocale('暂无消费记录')}
+                />
+              </div>
+            )}
 
           {tab === 'settings' && (
             <div className="grid gap-4 p-5 lg:grid-cols-2">
               <section className="rounded-xl border border-gray-200/70 p-4 dark:border-white/[0.08] lg:col-span-2">
                 <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">基础信息</h3>
-                <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-                  <label className="block">
-                    <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">系统名称</span>
-                    <input value={settingsDraft.appName} onChange={(event) => setSettingsDraft({ ...settingsDraft, appName: event.target.value })} placeholder={appName} className="w-full rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
-                  </label>
-                  <button onClick={saveSiteSettings} className="rounded-xl bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">保存基础信息</button>
-                </div>
+                <Form layout="vertical" className="mt-4">
+                  <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                    <Form.Item label="系统名称" className="mb-0">
+                      <Input
+                        value={settingsDraft.appName}
+                        placeholder={appName}
+                        onChange={(event) => setSettingsDraft({ ...settingsDraft, appName: event.target.value })}
+                      />
+                    </Form.Item>
+                    <Form.Item label=" " colon={false} className="mb-0">
+                      <Button type="primary" onClick={saveSiteSettings}>保存基础信息</Button>
+                    </Form.Item>
+                  </div>
+                </Form>
               </section>
 
               <section className="rounded-xl border border-gray-200/70 p-4 dark:border-white/[0.08] lg:col-span-2">
                 <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">安全与注册</h3>
-                <div className="mt-4 space-y-4">
-                  <label className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2.5 dark:bg-white/[0.04]">
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-200">允许公开注册</span>
-                    <button
-                      type="button"
-                      onClick={() => setSettingsDraft((draft) => ({ ...draft, registrationOpen: !draft.registrationOpen }))}
-                      className={`relative inline-flex h-5 w-9 items-center rounded-full transition ${settingsDraft.registrationOpen ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-700'}`}
-                      role="switch"
-                      aria-checked={settingsDraft.registrationOpen}
-                    >
-                      <span className={`h-4 w-4 rounded-full bg-white shadow transition ${settingsDraft.registrationOpen ? 'translate-x-4' : 'translate-x-0.5'}`} />
-                    </button>
-                  </label>
+                <Form layout="vertical" className="mt-4">
+                  <Form.Item label="允许公开注册">
+                    <Switch
+                      checked={settingsDraft.registrationOpen}
+                      checkedChildren="开启"
+                      unCheckedChildren="关闭"
+                      onChange={(checked) => setSettingsDraft((draft) => ({ ...draft, registrationOpen: checked }))}
+                    />
+                  </Form.Item>
                   {settingsDraft.registrationOpen && (
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <label className="block">
-                        <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">新用户默认 Credits</span>
-                        <input value={settingsDraft.defaultCredits} onChange={(event) => setSettingsDraft({ ...settingsDraft, defaultCredits: event.target.value })} placeholder={SETTINGS_PLACEHOLDERS.defaultCredits} className="w-full rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm outline-none placeholder:text-gray-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03] dark:placeholder:text-gray-600" />
-                      </label>
-                      <label className="block">
-                        <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">新用户默认倍率</span>
-                        <input value={settingsDraft.defaultMultiplier} onChange={(event) => setSettingsDraft({ ...settingsDraft, defaultMultiplier: event.target.value })} placeholder={SETTINGS_PLACEHOLDERS.defaultMultiplier} className="w-full rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm outline-none placeholder:text-gray-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03] dark:placeholder:text-gray-600" />
-                      </label>
+                      <Form.Item label="新用户默认 Credits">
+                        <Input
+                          value={settingsDraft.defaultCredits}
+                          placeholder={SETTINGS_PLACEHOLDERS.defaultCredits}
+                          onChange={(event) => setSettingsDraft({ ...settingsDraft, defaultCredits: event.target.value })}
+                        />
+                      </Form.Item>
+                      <Form.Item label="新用户默认倍率">
+                        <Input
+                          value={settingsDraft.defaultMultiplier}
+                          placeholder={SETTINGS_PLACEHOLDERS.defaultMultiplier}
+                          onChange={(event) => setSettingsDraft({ ...settingsDraft, defaultMultiplier: event.target.value })}
+                        />
+                      </Form.Item>
                     </div>
                   )}
-                  <button onClick={saveAuthSettings} className="rounded-xl bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">保存注册设置</button>
-                </div>
+                  <Button type="primary" onClick={saveAuthSettings}>保存注册设置</Button>
+                </Form>
               </section>
 
               <section className="rounded-xl border border-gray-200/70 p-4 dark:border-white/[0.08] lg:col-span-2">
                 <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">任务队列</h3>
-                <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                  <label className="block">
-                    <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">全局并发上限</span>
-                    <input value={settingsDraft.globalConcurrency} onChange={(event) => setSettingsDraft({ ...settingsDraft, globalConcurrency: event.target.value })} placeholder={SETTINGS_PLACEHOLDERS.globalConcurrency} className="w-full rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm outline-none placeholder:text-gray-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03] dark:placeholder:text-gray-600" />
-                  </label>
-                  <label className="block">
-                    <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">用户默认并发</span>
-                    <input value={settingsDraft.defaultUserConcurrency} onChange={(event) => setSettingsDraft({ ...settingsDraft, defaultUserConcurrency: event.target.value })} placeholder={SETTINGS_PLACEHOLDERS.defaultUserConcurrency} className="w-full rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm outline-none placeholder:text-gray-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03] dark:placeholder:text-gray-600" />
-                  </label>
-                  <label className="block">
-                    <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">单用户队列上限</span>
-                    <input value={settingsDraft.maxQueueSize} onChange={(event) => setSettingsDraft({ ...settingsDraft, maxQueueSize: event.target.value })} placeholder={SETTINGS_PLACEHOLDERS.maxQueueSize} className="w-full rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm outline-none placeholder:text-gray-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03] dark:placeholder:text-gray-600" />
-                  </label>
-                </div>
-                <button onClick={saveQueueSettings} className="mt-4 rounded-xl bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">保存队列设置</button>
+                <Form layout="vertical" className="mt-4">
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <Form.Item label="全局并发上限">
+                      <Input
+                        value={settingsDraft.globalConcurrency}
+                        placeholder={SETTINGS_PLACEHOLDERS.globalConcurrency}
+                        onChange={(event) => setSettingsDraft({ ...settingsDraft, globalConcurrency: event.target.value })}
+                      />
+                    </Form.Item>
+                    <Form.Item label="用户默认并发">
+                      <Input
+                        value={settingsDraft.defaultUserConcurrency}
+                        placeholder={SETTINGS_PLACEHOLDERS.defaultUserConcurrency}
+                        onChange={(event) => setSettingsDraft({ ...settingsDraft, defaultUserConcurrency: event.target.value })}
+                      />
+                    </Form.Item>
+                    <Form.Item label="单用户队列上限">
+                      <Input
+                        value={settingsDraft.maxQueueSize}
+                        placeholder={SETTINGS_PLACEHOLDERS.maxQueueSize}
+                        onChange={(event) => setSettingsDraft({ ...settingsDraft, maxQueueSize: event.target.value })}
+                      />
+                    </Form.Item>
+                  </div>
+                  <Button type="primary" onClick={saveQueueSettings}>保存队列设置</Button>
+                </Form>
               </section>
 
               <section className="rounded-xl border border-gray-200/70 p-4 dark:border-white/[0.08] lg:col-span-2">
                 <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">模型服务</h3>
                 <div className="mt-4 grid gap-3">
                   {modelDrafts.map((model, index) => (
-                    <div key={model.id ?? index} className="grid gap-2 rounded-xl border border-gray-100 p-3 dark:border-white/[0.06]">
-                      <div className="grid gap-2 md:grid-cols-[1fr_1.4fr_1fr_110px]">
-                        <input value={model.name} onChange={(event) => setModelDrafts((items) => items.map((item, i) => i === index ? { ...item, name: event.target.value } : item))} placeholder="名称" className="rounded-xl border border-gray-200/70 bg-white px-3 py-2 text-sm outline-none dark:border-white/[0.08] dark:bg-white/[0.03]" />
-                        <input value={model.baseUrl} onChange={(event) => setModelDrafts((items) => items.map((item, i) => i === index ? { ...item, baseUrl: event.target.value } : item))} placeholder="API URL" className="rounded-xl border border-gray-200/70 bg-white px-3 py-2 text-sm outline-none dark:border-white/[0.08] dark:bg-white/[0.03]" />
-                        <input value={model.model} onChange={(event) => setModelDrafts((items) => items.map((item, i) => i === index ? { ...item, model: event.target.value } : item))} placeholder="模型 ID" className="rounded-xl border border-gray-200/70 bg-white px-3 py-2 text-sm outline-none dark:border-white/[0.08] dark:bg-white/[0.03]" />
-                        <input value={model.timeoutSeconds} onChange={(event) => setModelDrafts((items) => items.map((item, i) => i === index ? { ...item, timeoutSeconds: Math.max(10, Number(event.target.value) || 120) } : item))} placeholder="超时秒" className="rounded-xl border border-gray-200/70 bg-white px-3 py-2 text-sm outline-none dark:border-white/[0.08] dark:bg-white/[0.03]" />
+                    <Form key={model.id ?? index} layout="vertical" className="rounded-xl border border-gray-100 p-3 dark:border-white/[0.06]">
+                      <div className="grid gap-3 md:grid-cols-[1fr_1.4fr_1fr_110px]">
+                        <Form.Item label="名称">
+                          <Input value={model.name} onChange={(event) => setModelDrafts((items) => items.map((item, i) => i === index ? { ...item, name: event.target.value } : item))} placeholder="名称" />
+                        </Form.Item>
+                        <Form.Item label="API URL">
+                          <Input value={model.baseUrl} onChange={(event) => setModelDrafts((items) => items.map((item, i) => i === index ? { ...item, baseUrl: event.target.value } : item))} placeholder="API URL" />
+                        </Form.Item>
+                        <Form.Item label="模型 ID">
+                          <Input value={model.model} onChange={(event) => setModelDrafts((items) => items.map((item, i) => i === index ? { ...item, model: event.target.value } : item))} placeholder="模型 ID" />
+                        </Form.Item>
+                        <Form.Item label="超时秒">
+                          <Input value={model.timeoutSeconds} onChange={(event) => setModelDrafts((items) => items.map((item, i) => i === index ? { ...item, timeoutSeconds: Math.max(10, Number(event.target.value) || 120) } : item))} placeholder="超时秒" />
+                        </Form.Item>
                       </div>
-                      <div className="grid gap-2 md:grid-cols-[1fr_140px_120px_120px_auto]">
-                        <input value={model.apiKey ?? ''} onChange={(event) => setModelDrafts((items) => items.map((item, i) => i === index ? { ...item, apiKey: event.target.value } : item))} type="password" placeholder="API Key，留空保持原值" className="rounded-xl border border-gray-200/70 bg-white px-3 py-2 text-sm outline-none dark:border-white/[0.08] dark:bg-white/[0.03]" />
-                        <select value={model.apiMode} onChange={(event) => setModelDrafts((items) => items.map((item, i) => i === index ? { ...item, apiMode: event.target.value as ModelApiMode } : item))} className="rounded-xl border border-gray-200/70 bg-white px-3 py-2 text-sm outline-none dark:border-white/[0.08] dark:bg-white/[0.03]">
-                          <option value="images">Images</option>
-                          <option value="responses">Responses</option>
-                        </select>
-                        <button type="button" onClick={() => setModelDrafts((items) => items.map((item, i) => i === index ? { ...item, enabled: !item.enabled } : item))} className="rounded-xl bg-gray-100 px-3 py-2 text-sm font-medium dark:bg-white/[0.08]">{model.enabled ? '启用' : '停用'}</button>
-                        <button type="button" onClick={() => setModelDrafts((items) => items.map((item, i) => ({ ...item, isDefault: i === index })))} className={`rounded-xl px-3 py-2 text-sm font-medium ${model.isDefault ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-white/[0.08]'}`}>默认</button>
-                        <button type="button" onClick={() => setModelDrafts((items) => items.length > 1 ? items.filter((_, i) => i !== index) : items)} className="rounded-xl bg-red-50 px-3 py-2 text-sm font-medium text-red-600 dark:bg-red-500/10">删除</button>
+                      <div className="grid gap-3 md:grid-cols-[1fr_140px_120px_120px_auto]">
+                        <Form.Item label="API Key">
+                          <Input.Password value={model.apiKey ?? ''} onChange={(event) => setModelDrafts((items) => items.map((item, i) => i === index ? { ...item, apiKey: event.target.value } : item))} placeholder="留空保持原值" />
+                        </Form.Item>
+                        <Form.Item label="API 模式">
+                          <Select value={model.apiMode} options={API_MODE_OPTIONS} onChange={(value) => setModelDrafts((items) => items.map((item, i) => i === index ? { ...item, apiMode: value as ModelApiMode } : item))} />
+                        </Form.Item>
+                        <Form.Item label="启用状态">
+                          <Button block onClick={() => setModelDrafts((items) => items.map((item, i) => i === index ? { ...item, enabled: !item.enabled } : item))}>{model.enabled ? '启用' : '停用'}</Button>
+                        </Form.Item>
+                        <Form.Item label="默认模型">
+                          <Button block type={model.isDefault ? 'primary' : 'default'} onClick={() => setModelDrafts((items) => items.map((item, i) => ({ ...item, isDefault: i === index })))}>默认</Button>
+                        </Form.Item>
+                        <Form.Item label="操作">
+                          <Button block danger onClick={() => setModelDrafts((items) => items.length > 1 ? items.filter((_, i) => i !== index) : items)}>删除</Button>
+                        </Form.Item>
                       </div>
-                    </div>
+                    </Form>
                   ))}
                 </div>
                 <div className="mt-4 flex gap-2">
-                  <button onClick={() => setModelDrafts((items) => [...items, { ...DEFAULT_MODEL_DRAFT, name: '新模型', isDefault: items.length === 0 }])} className="rounded-xl bg-gray-100 px-3.5 py-2 text-sm font-semibold text-gray-700 dark:bg-white/[0.08] dark:text-gray-200">添加模型</button>
-                  <button onClick={saveModelProfiles} className="rounded-xl bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">保存模型服务</button>
+                  <Button onClick={() => setModelDrafts((items) => [...items, { ...DEFAULT_MODEL_DRAFT, name: '新模型', isDefault: items.length === 0 }])}>添加模型</Button>
+                  <Button type="primary" onClick={saveModelProfiles}>保存模型服务</Button>
                 </div>
               </section>
 
@@ -967,125 +1410,157 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
 
           {tab === 'audit' && (
             <div className="p-5">
-              {auditLogs.length === 0 ? <EmptyState text="暂无审计日志" /> : (
-                <div className="grid max-h-[560px] gap-2 overflow-auto pr-1">
-                  {auditLogs.map((log) => (
-                    <div key={log.id} className="rounded-xl border border-gray-100 bg-white px-3.5 py-3 text-sm shadow-sm dark:border-white/[0.06] dark:bg-white/[0.03]">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="font-medium text-gray-800 dark:text-gray-100">{log.action}</div>
-                        <div className="text-xs text-gray-500">{formatTime(log.createdAt)}</div>
-                      </div>
-                      <div className="mt-1 text-xs text-gray-500">操作人：{log.actorUsername ?? '系统'} · 对象：{log.targetType}{log.targetId ? `/${log.targetId}` : ''}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <Table<AuditLog>
+                className="console-compact-table"
+                rowKey="id"
+                size="small"
+                columns={auditColumns}
+                dataSource={auditLogs}
+                pagination={compactPagination}
+                scroll={{ x: 1110, y: TABLE_SCROLL_Y }}
+                locale={tableLocale('暂无审计日志')}
+              />
             </div>
           )}
         </section>
       </div>
 
-      {showCreateUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm animate-overlay-in">
-          <div className="w-full max-w-lg overflow-hidden rounded-xl border border-gray-200/70 bg-white shadow-xl animate-confirm-in dark:border-white/[0.08] dark:bg-gray-900">
-            <div className="border-b border-gray-200/70 px-5 py-4 dark:border-white/[0.08]">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-bold tracking-tight">创建用户</h3>
-                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">创建普通用户账号，管理员权限需在数据库中手动调整。</p>
-                </div>
-                <button onClick={() => setShowCreateUser(false)} className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-white/[0.08] dark:hover:text-gray-200">×</button>
+        <Modal
+          className="console-modal"
+          open={showCreateUser}
+          title="创建用户"
+          onCancel={() => {
+            setDialogError(null)
+            setShowCreateUser(false)
+          }}
+          footer={[
+            <Button
+              key="cancel"
+              onClick={() => {
+                setDialogError(null)
+                setShowCreateUser(false)
+              }}
+            >
+              取消
+            </Button>,
+            <Button key="submit" type="primary" onClick={handleCreateUser}>创建</Button>,
+          ]}
+        >
+          <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">创建普通用户账号，管理员权限需在数据库中手动调整。</p>
+          <Form layout="vertical">
+            <Form.Item label="用户名">
+              <Input value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} placeholder="用户名" />
+            </Form.Item>
+            <Form.Item label="邮箱">
+              <Input value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="邮箱" />
+            </Form.Item>
+            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+              <Form.Item label="密码">
+                <Input value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} placeholder="密码，至少 6 位" />
+              </Form.Item>
+              <div className="flex mb-[12px]">
+                <Button className="w-full sm:w-auto" onClick={() => setForm((draft) => ({ ...draft, password: generatePassword() }))}>随机生成</Button>
               </div>
             </div>
-            <div className="grid gap-3 px-5 py-4">
-              <input value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} placeholder="用户名" className="rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
-              <input value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} type="email" placeholder="邮箱" className="rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
-              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-                <input value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} type="text" placeholder="密码，至少 6 位" className="rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
-                <button type="button" onClick={() => setForm((draft) => ({ ...draft, password: generatePassword() }))} className="rounded-xl bg-gray-100 px-3.5 py-2.5 text-sm font-semibold text-gray-700 dark:bg-white/[0.08] dark:text-gray-200">随机生成</button>
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                <input value={form.credits} onChange={(event) => setForm({ ...form, credits: event.target.value })} placeholder="Credits" className="rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
-                <input value={form.multiplier} onChange={(event) => setForm({ ...form, multiplier: event.target.value })} placeholder="倍率" className="rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
-                <input value={form.concurrencyLimit} onChange={(event) => setForm({ ...form, concurrencyLimit: event.target.value })} placeholder="并发默认" className="rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
-              </div>
-              {error && <div className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600 dark:bg-red-500/10 dark:text-red-300">{error}</div>}
-              <div className="mt-2 flex justify-end gap-2 border-t border-gray-100 pt-4 dark:border-white/[0.06]">
-                <button onClick={() => setShowCreateUser(false)} className="rounded-xl bg-gray-100 px-3.5 py-2 text-sm font-medium text-gray-700 dark:bg-white/[0.08] dark:text-gray-200">取消</button>
-                <button onClick={handleCreateUser} className="rounded-xl bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">创建</button>
-              </div>
+            <div className="grid grid-cols-3 gap-2">
+              <Form.Item label="Credits">
+                <Input value={form.credits} onChange={(event) => setForm({ ...form, credits: event.target.value })} placeholder="Credits" />
+              </Form.Item>
+              <Form.Item label="倍率">
+                <Input value={form.multiplier} onChange={(event) => setForm({ ...form, multiplier: event.target.value })} placeholder="倍率" />
+              </Form.Item>
+              <Form.Item label="并发上限">
+                <Input value={form.concurrencyLimit} onChange={(event) => setForm({ ...form, concurrencyLimit: event.target.value })} placeholder="留空使用默认" />
+              </Form.Item>
             </div>
-          </div>
-        </div>
-      )}
+            {dialogError && <Alert type="error" showIcon title={dialogError} />}
+          </Form>
+        </Modal>
 
-      {editingUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm animate-overlay-in">
-          <div className="w-full max-w-lg overflow-hidden rounded-xl border border-gray-200/70 bg-white shadow-xl animate-confirm-in dark:border-white/[0.08] dark:bg-gray-900">
-            <div className="border-b border-gray-200/70 px-5 py-4 dark:border-white/[0.08]">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-bold tracking-tight">编辑用户配置</h3>
-                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{editingUser.username} · {editingUser.email}</p>
+        <Modal
+          className="console-modal"
+          open={Boolean(editingUser)}
+          title="编辑用户配置"
+          onCancel={() => {
+            setDialogError(null)
+            setEditingUser(null)
+          }}
+          footer={[
+            <Button
+              key="cancel"
+              onClick={() => {
+                setDialogError(null)
+                setEditingUser(null)
+              }}
+            >
+              取消
+            </Button>,
+            <Button key="submit" type="primary" onClick={saveEditingUser}>保存</Button>,
+          ]}
+        >
+          {editingUser && (
+            <>
+              <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">{editingUser.username} · {editingUser.email}</p>
+              <Form layout="vertical">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Form.Item label="专属倍率">
+                    <Input value={editUserForm.multiplier} onChange={(event) => setEditUserForm({ ...editUserForm, multiplier: event.target.value })} />
+                  </Form.Item>
+                  <Form.Item label="专属并发">
+                    <Input value={editUserForm.concurrencyLimit} onChange={(event) => setEditUserForm({ ...editUserForm, concurrencyLimit: event.target.value })} placeholder="留空使用默认" />
+                  </Form.Item>
                 </div>
-                <button onClick={() => setEditingUser(null)} className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-white/[0.08] dark:hover:text-gray-200">×</button>
-              </div>
-            </div>
-            <div className="grid gap-4 px-5 py-4">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="block">
-                  <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">专属倍率</span>
-                  <input value={editUserForm.multiplier} onChange={(event) => setEditUserForm({ ...editUserForm, multiplier: event.target.value })} className="w-full rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
-                </label>
-                <label className="block">
-                  <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">专属并发</span>
-                  <input value={editUserForm.concurrencyLimit} onChange={(event) => setEditUserForm({ ...editUserForm, concurrencyLimit: event.target.value })} placeholder="留空使用默认" className="w-full rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
-                </label>
-              </div>
-              <label className="block">
-                <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">备注</span>
-                <textarea value={editUserForm.note} onChange={(event) => setEditUserForm({ ...editUserForm, note: event.target.value })} rows={3} maxLength={500} placeholder="填写用户备注" className="w-full resize-none rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
-              </label>
-              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-                <label className="block">
-                  <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">重置密码</span>
-                  <input value={editUserForm.password} onChange={(event) => setEditUserForm({ ...editUserForm, password: event.target.value })} type="text" placeholder="留空不修改密码" className="w-full rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
-                </label>
-                <button type="button" onClick={() => setEditUserForm((draft) => ({ ...draft, password: generatePassword() }))} className="rounded-xl bg-gray-100 px-3.5 py-2.5 text-sm font-semibold text-gray-700 dark:bg-white/[0.08] dark:text-gray-200">随机生成</button>
-              </div>
-              {editingUser.role !== 'admin' && (
-                <label className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2.5 dark:bg-white/[0.04]">
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-200">账号状态</span>
-                  <button
-                    type="button"
-                    onClick={() => setEditUserForm((draft) => ({ ...draft, disabled: !draft.disabled }))}
-                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition ${editUserForm.disabled ? 'bg-gray-300 dark:bg-gray-700' : 'bg-blue-600'}`}
-                    role="switch"
-                    aria-checked={!editUserForm.disabled}
-                  >
-                    <span className={`h-4 w-4 rounded-full bg-white shadow transition ${editUserForm.disabled ? 'translate-x-0.5' : 'translate-x-4'}`} />
-                  </button>
-                </label>
-              )}
-              {error && <div className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600 dark:bg-red-500/10 dark:text-red-300">{error}</div>}
-              <div className="flex justify-end gap-2 border-t border-gray-100 pt-4 dark:border-white/[0.06]">
-                <button onClick={() => setEditingUser(null)} className="rounded-xl bg-gray-100 px-3.5 py-2 text-sm font-medium text-gray-700 dark:bg-white/[0.08] dark:text-gray-200">取消</button>
-                <button onClick={saveEditingUser} className="rounded-xl bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">保存</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+                <Form.Item label="备注">
+                  <Input.TextArea value={editUserForm.note} onChange={(event) => setEditUserForm({ ...editUserForm, note: event.target.value })} rows={3} maxLength={500} placeholder="填写用户备注" />
+                </Form.Item>
+                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                  <Form.Item label="重置密码">
+                    <Input value={editUserForm.password} onChange={(event) => setEditUserForm({ ...editUserForm, password: event.target.value })} placeholder="留空不修改密码" />
+                  </Form.Item>
+                  <div className="flex sm:pt-6">
+                    <Button className="w-full sm:w-auto" onClick={() => setEditUserForm((draft) => ({ ...draft, password: generatePassword() }))}>随机生成</Button>
+                  </div>
+                </div>
+                {editingUser.role !== 'admin' && (
+                  <Form.Item label="账号状态">
+                    <Switch
+                      checked={!editUserForm.disabled}
+                      checkedChildren="启用"
+                      unCheckedChildren="禁用"
+                      onChange={(checked) => setEditUserForm((draft) => ({ ...draft, disabled: !checked }))}
+                    />
+                  </Form.Item>
+                )}
+                {dialogError && <Alert type="error" showIcon title={dialogError} />}
+              </Form>
+            </>
+          )}
+        </Modal>
 
-      {creditTarget && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm animate-overlay-in">
-          <div className="w-full max-w-lg overflow-hidden rounded-xl border border-gray-200/70 bg-white shadow-xl animate-confirm-in dark:border-white/[0.08] dark:bg-gray-900">
-            <div className="flex items-center justify-between border-b border-gray-200/70 px-6 py-5 dark:border-white/[0.08]">
-              <h3 className="text-xl font-bold tracking-tight">{creditTarget.type === 'recharge' ? '充值' : '退款'}</h3>
-              <button onClick={() => setCreditTarget(null)} className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-white/[0.08] dark:hover:text-gray-200">×</button>
-            </div>
-            <div className="grid gap-5 px-6 py-5">
-              <div className="flex items-center gap-3 rounded-xl bg-gray-50 px-4 py-4 dark:bg-white/[0.04]">
+        <Modal
+          className="console-modal"
+          open={Boolean(creditTarget)}
+          title={creditTarget?.type === 'recharge' ? '充值' : '退款'}
+          onCancel={() => {
+            setDialogError(null)
+            setCreditTarget(null)
+          }}
+          footer={[
+            <Button
+              key="cancel"
+              onClick={() => {
+                setDialogError(null)
+                setCreditTarget(null)
+              }}
+            >
+              取消
+            </Button>,
+            <Button key="submit" type="primary" danger={creditTarget?.type === 'refund'} onClick={submitCreditDialog}>确认</Button>,
+          ]}
+        >
+          {creditTarget && (
+            <Form layout="vertical">
+              <div className="mb-4 flex items-center gap-3 rounded-xl bg-gray-50 px-4 py-4 dark:bg-white/[0.04]">
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-lg font-bold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200">
                   {userInitial(creditTarget.user)}
                 </div>
@@ -1094,31 +1569,30 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
                   <div className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">当前余额：{creditTarget.user.credits.toFixed(2)} Credits</div>
                 </div>
               </div>
-              <label className="block">
-                <span className="mb-1.5 block text-sm font-semibold text-gray-700 dark:text-gray-200">{creditTarget.type === 'recharge' ? '充值金额' : '退款金额'}</span>
-                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-                  <div className="flex items-center rounded-xl border border-gray-200/70 bg-white px-3 shadow-sm transition focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]">
-                    <span className="pr-3 text-lg font-semibold text-gray-400">$</span>
-                    <input value={creditForm.amount} onChange={(event) => setCreditForm((draft) => ({ ...draft, amount: event.target.value }))} placeholder="0" className="min-w-0 flex-1 bg-transparent py-2.5 text-sm outline-none" />
-                  </div>
-                  {creditTarget.type === 'refund' && (
-                    <button type="button" onClick={() => setCreditForm((draft) => ({ ...draft, amount: String(Math.max(0, creditTarget.user.credits)) }))} className="rounded-xl border border-gray-200/70 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:hover:bg-white/[0.08]">全部</button>
-                  )}
-                </div>
-              </label>
-              <label className="block">
-                <span className="mb-1.5 block text-sm font-semibold text-gray-700 dark:text-gray-200">备注</span>
-                <textarea value={creditForm.note} onChange={(event) => setCreditForm((draft) => ({ ...draft, note: event.target.value }))} rows={3} maxLength={500} placeholder="填写本次操作备注" className="w-full resize-none rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
-              </label>
-              {error && <div className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600 dark:bg-red-500/10 dark:text-red-300">{error}</div>}
-            </div>
-            <div className="flex justify-end gap-3 border-t border-gray-200/70 px-6 py-4 dark:border-white/[0.08]">
-              <button onClick={() => setCreditTarget(null)} className="rounded-xl bg-gray-100 px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-200 dark:bg-white/[0.08] dark:text-gray-200 dark:hover:bg-white/[0.12]">取消</button>
-              <button onClick={submitCreditDialog} className={`rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition ${creditTarget.type === 'recharge' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-500 hover:bg-red-600'}`}>确认</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </main>
+              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                <Form.Item label={creditTarget.type === 'recharge' ? '充值金额' : '退款金额'}>
+                  <Input
+                    value={creditForm.amount}
+                    addonAfter="Credits"
+                    placeholder="0"
+                    onChange={(event) => setCreditForm((draft) => ({ ...draft, amount: event.target.value }))}
+                  />
+                </Form.Item>
+                {creditTarget.type === 'refund' && (
+                  <Form.Item label=" " colon={false}>
+                    <Button onClick={() => setCreditForm((draft) => ({ ...draft, amount: String(Math.max(0, creditTarget.user.credits)) }))}>全部</Button>
+                  </Form.Item>
+                )}
+              </div>
+              <Form.Item label="备注">
+                <Input.TextArea value={creditForm.note} onChange={(event) => setCreditForm((draft) => ({ ...draft, note: event.target.value }))} rows={3} maxLength={500} placeholder="填写本次操作备注" />
+              </Form.Item>
+              {dialogError && <Alert type="error" showIcon title={dialogError} />}
+            </Form>
+          )}
+        </Modal>
+        <Lightbox />
+      </main>
+    </ConfigProvider>
   )
 }

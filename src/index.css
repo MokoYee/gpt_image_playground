@@ -216,6 +216,200 @@ input[type="number"] {
   min-height: 3.5rem;
 }
 
+.console-antd-scope .ant-btn,
+.console-antd-scope .ant-table,
+.console-antd-scope .ant-dropdown,
+.console-antd-scope .ant-empty {
+  font-family: var(--font-ui-sans);
+}
+
+.console-antd-scope .console-nav-button.ant-btn {
+  border: 0 !important;
+  border-color: transparent !important;
+  height: auto;
+  min-height: 56px;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: inset 0 -1px 0 rgb(243 244 246) !important;
+  justify-content: flex-start;
+  white-space: normal;
+  background: transparent;
+  color: inherit;
+  outline: none !important;
+}
+
+.console-antd-scope .console-nav-button.ant-btn:last-child {
+  box-shadow: none !important;
+}
+
+.console-antd-scope .console-nav-button.ant-btn:hover,
+.console-antd-scope .console-nav-button.ant-btn:focus,
+.console-antd-scope .console-nav-button.ant-btn:focus-visible,
+.console-antd-scope .console-nav-button.ant-btn:active {
+  border: 0 !important;
+  border-color: transparent !important;
+  box-shadow: inset 0 -1px 0 rgb(243 244 246) !important;
+  outline: none !important;
+  background: rgb(249 250 251 / 0.86);
+  color: rgb(31 41 55);
+}
+
+.console-antd-scope .console-nav-button.ant-btn:last-child:hover,
+.console-antd-scope .console-nav-button.ant-btn:last-child:focus,
+.console-antd-scope .console-nav-button.ant-btn:last-child:focus-visible,
+.console-antd-scope .console-nav-button.ant-btn:last-child:active {
+  box-shadow: none !important;
+}
+
+.console-antd-scope .console-nav-button.ant-btn.is-active {
+  background: rgb(239 246 255 / 0.82);
+  color: rgb(29 78 216);
+}
+
+.console-antd-scope .console-nav-button .console-nav-content {
+  width: 100%;
+}
+
+.console-antd-scope .console-nav-button .console-nav-indicator {
+  width: 3px;
+}
+
+.console-antd-scope .console-row-action.ant-btn {
+  padding-inline: 6px;
+}
+
+.console-antd-scope .ant-form-vertical .ant-form-item:not(.mb-0) {
+  margin-bottom: 12px;
+}
+
+.console-modal .ant-form-vertical .ant-form-item:not(.mb-0) {
+  margin-bottom: 12px;
+}
+
+.console-antd-scope .ant-form-vertical .ant-form-item.mb-0,
+.console-antd-scope .ant-form-vertical .ant-form-item:last-child {
+  margin-bottom: 0;
+}
+
+.console-modal .ant-form-vertical .ant-form-item.mb-0,
+.console-modal .ant-form-vertical .ant-form-item:last-child {
+  margin-bottom: 0;
+}
+
+.console-antd-scope .ant-form-vertical .ant-form-item-with-help:not(.mb-0) {
+  margin-bottom: 6px;
+}
+
+.console-modal .ant-form-vertical .ant-form-item-with-help:not(.mb-0) {
+  margin-bottom: 6px;
+}
+
+.console-antd-scope .ant-form-vertical .ant-form-item-label {
+  padding-bottom: 4px;
+}
+
+.console-modal .ant-form-vertical .ant-form-item-label {
+  padding-bottom: 4px;
+}
+
+.console-antd-scope .ant-form-vertical .ant-form-item-label > label {
+  height: 20px;
+}
+
+.console-modal .ant-form-vertical .ant-form-item-label > label {
+  height: 20px;
+}
+
+.console-antd-scope .ant-form-vertical .ant-form-item-explain,
+.console-antd-scope .ant-form-vertical .ant-form-item-extra {
+  min-height: 18px;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.console-modal .ant-form-vertical .ant-form-item-explain,
+.console-modal .ant-form-vertical .ant-form-item-extra {
+  min-height: 18px;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.console-antd-scope .ant-form .grid {
+  row-gap: 8px;
+}
+
+.console-modal .ant-form .grid {
+  row-gap: 8px;
+}
+
+.console-antd-scope .console-filter-form .ant-form-item-label {
+  padding-bottom: 4px;
+}
+
+.console-antd-scope .console-filter-form .ant-form-item-label > label {
+  height: 18px;
+  color: rgb(75 85 99);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.console-antd-scope .console-compact-table .ant-table-container {
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px rgb(229 231 235 / 0.7);
+  overflow: hidden;
+}
+
+.console-antd-scope .console-compact-table .ant-table-cell {
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.console-antd-scope .console-compact-table .ant-table-cell-ellipsis {
+  max-width: 1px;
+}
+
+.console-antd-scope .console-compact-table .ant-pagination {
+  margin: 12px 0 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .console-antd-scope .console-nav-button.ant-btn {
+    box-shadow: inset 0 -1px 0 rgb(255 255 255 / 0.06) !important;
+  }
+
+  .console-antd-scope .console-nav-button.ant-btn:last-child {
+    box-shadow: none !important;
+  }
+
+  .console-antd-scope .console-compact-table .ant-table-container {
+    box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08);
+  }
+
+  .console-antd-scope .console-nav-button.ant-btn:hover,
+  .console-antd-scope .console-nav-button.ant-btn:focus,
+  .console-antd-scope .console-nav-button.ant-btn:focus-visible,
+  .console-antd-scope .console-nav-button.ant-btn:active {
+    border: 0 !important;
+    border-color: transparent !important;
+    box-shadow: inset 0 -1px 0 rgb(255 255 255 / 0.06) !important;
+    outline: none !important;
+    background: rgb(255 255 255 / 0.05);
+    color: rgb(229 231 235);
+  }
+
+  .console-antd-scope .console-nav-button.ant-btn:last-child:hover,
+  .console-antd-scope .console-nav-button.ant-btn:last-child:focus,
+  .console-antd-scope .console-nav-button.ant-btn:last-child:focus-visible,
+  .console-antd-scope .console-nav-button.ant-btn:last-child:active {
+    box-shadow: none !important;
+  }
+
+  .console-antd-scope .console-nav-button.ant-btn.is-active {
+    background: rgb(37 99 235 / 0.13);
+    color: rgb(147 197 253);
+  }
+}
+
 @media (max-width: 640px) {
   input,
   textarea,

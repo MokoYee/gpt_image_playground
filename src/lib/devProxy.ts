@@ -34,11 +34,24 @@ export function normalizeBaseUrl(baseUrl: string): string {
   }
 }
 
+function normalizeProxyTarget(target: string): string {
+  const normalized = normalizeBaseUrl(target)
+  if (!normalized) return ''
+
+  try {
+    const url = new URL(normalized)
+    if (!url.pathname || url.pathname === '/') return `${url.origin}/v1`
+    return normalized
+  } catch {
+    return normalized
+  }
+}
+
 export function normalizeDevProxyConfig(input: unknown): DevProxyConfig | null {
   if (!input || typeof input !== 'object') return null
 
   const record = input as Record<string, unknown>
-  const target = normalizeBaseUrl(typeof record.target === 'string' ? record.target : '')
+  const target = normalizeProxyTarget(typeof record.target === 'string' ? record.target : '')
   if (!target) return null
 
   const rawPrefix = typeof record.prefix === 'string' ? record.prefix : DEFAULT_PROXY_PREFIX
@@ -86,7 +99,10 @@ export function readClientDevProxyConfig(): DevProxyConfig | null {
 }
 
 export function isApiProxyAvailable(proxyConfig: DevProxyConfig | null = readClientDevProxyConfig()): boolean {
-  return readRuntimeEnv(import.meta.env.VITE_API_PROXY_AVAILABLE) === 'true' || Boolean(proxyConfig?.enabled)
+  const envValue = readRuntimeEnv(import.meta.env.VITE_API_PROXY_AVAILABLE)
+  if (envValue === 'true') return true
+  if (envValue === 'false') return false
+  return Boolean(proxyConfig?.enabled)
 }
 
 export function isApiProxyLocked(proxyConfig: DevProxyConfig | null = readClientDevProxyConfig()): boolean {

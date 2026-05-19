@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildApiUrl } from './devProxy'
+import { buildApiUrl, normalizeDevProxyConfig } from './devProxy'
 
 describe('buildApiUrl', () => {
   it('uses the same-origin proxy prefix when API proxy is enabled', () => {
@@ -35,5 +35,21 @@ describe('buildApiUrl', () => {
     expect(buildApiUrl('http://api.example.com/v1', 'responses', null, false)).toBe(
       'http://api.example.com/v1/responses',
     )
+  })
+})
+
+describe('normalizeDevProxyConfig', () => {
+  it('adds the v1 segment to a bare proxy target origin', () => {
+    expect(normalizeDevProxyConfig({
+      enabled: true,
+      target: 'https://api.example.com',
+    })?.target).toBe('https://api.example.com/v1')
+  })
+
+  it('keeps an explicit proxy target v1 segment', () => {
+    expect(normalizeDevProxyConfig({
+      enabled: true,
+      target: 'https://api.example.com/v1',
+    })?.target).toBe('https://api.example.com/v1')
   })
 })
