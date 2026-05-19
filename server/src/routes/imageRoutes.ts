@@ -112,6 +112,18 @@ async function getQueueCounts(app: FastifyInstance, userId: string) {
   }
 }
 
+async function waitForTaskStatus(app: FastifyInstance, taskId: string, timeoutMs = 250): Promise<string> {
+  const deadline = Date.now() + timeoutMs
+  let status = 'queued'
+  while (Date.now() <= deadline) {
+    const result = await app.context.db.query<{ status: string }>('select status from image_tasks where id = $1', [taskId])
+    status = result.rows[0]?.status ?? status
+    if (status !== 'queued') return status
+    await new Promise((resolve) => setTimeout(resolve, 40))
+  }
+  return status
+}
+
 function signFileToken(secret: string, fileId: string, expiresAt: number): string {
   const payload = `${fileId}.${expiresAt}`
   const signature = createHmac('sha256', secret).update(payload).digest('base64url')
@@ -248,16 +260,18 @@ export async function registerImageRoutes(app: FastifyInstance) {
     const body = GenerateSchema.parse(request.body)
     const taskId = await createQueuedTask(app, request.user.id, body)
     await writeAuditLog(app.context.db, request.user, 'image.task.create', 'image_task', taskId)
+    const status = await waitForTaskStatus(app, taskId)
     const counts = await getQueueCounts(app, request.user.id)
-    return { taskId, status: 'queued', queue: counts }
+    return { taskId, status, queue: counts }
   })
 
   app.post('/api/images/generate', { preHandler: requireAuth }, async (request) => {
     const body = GenerateSchema.parse(request.body)
     const taskId = await createQueuedTask(app, request.user.id, body)
     await writeAuditLog(app.context.db, request.user, 'image.task.create', 'image_task', taskId)
+    const status = await waitForTaskStatus(app, taskId)
     const counts = await getQueueCounts(app, request.user.id)
-    return { taskId, status: 'queued', queue: counts }
+    return { taskId, status, queue: counts }
   })
 
   app.get('/api/images/tasks/:taskId', { preHandler: requireAuth }, async (request) => {

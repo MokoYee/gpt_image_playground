@@ -28,9 +28,7 @@ function validateEmail(email: string): string | null {
 
 function validatePassword(password: string): string | null {
   if (!password) return '请输入密码'
-  if (password.length < 8 || password.length > 32) return '密码长度需为 8-32 位'
-  if (/\s/.test(password)) return '密码不能包含空格'
-  if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) return '密码需同时包含字母和数字'
+  if (password.length < 6 || password.length > 72) return '密码长度需为 6-72 位'
   return null
 }
 
