@@ -24,6 +24,7 @@ export interface CreditRecord {
   username?: string
   type: 'recharge' | 'refund'
   amount: number
+  note?: string
   operatorUsername: string
   createdAt: number
 }
@@ -257,10 +258,10 @@ export async function deleteUser(userId: string) {
   await requestApi(`/api/admin/users/${userId}`, { method: 'DELETE' })
 }
 
-export async function adjustUserCredits(userId: string, amount: number, type: CreditRecord['type']) {
+export async function adjustUserCredits(userId: string, amount: number, type: CreditRecord['type'], note = '') {
   const result = await requestApi<{ user: AppUser }>(`/api/admin/users/${userId}/credits`, {
     method: 'POST',
-    body: JSON.stringify({ amount, type }),
+    body: JSON.stringify({ amount, type, note }),
   })
   return result.user
 }

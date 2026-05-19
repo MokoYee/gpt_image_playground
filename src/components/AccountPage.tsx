@@ -44,8 +44,8 @@ export default function AccountPage({ user, onClose, onUserChange }: AccountPage
   }, [])
 
   const changePassword = async () => {
-    if (newPassword.length < 8 || newPassword.length > 72 || !/[A-Za-z]/.test(newPassword) || !/\d/.test(newPassword) || /\s/.test(newPassword)) {
-      setMessage('新密码需为 8-72 位，包含字母和数字，且不能包含空格')
+    if (newPassword.length < 6 || newPassword.length > 72) {
+      setMessage('新密码需为 6-72 位')
       return
     }
     if (newPassword !== confirmPassword) {

@@ -92,7 +92,7 @@ export async function createProtectedImageLink(fileId: string): Promise<string> 
 }
 
 export async function createImageTask(opts: CallApiOptions & { localTaskId: string }) {
-  return authedJson<{ taskId: string; status: string; queue: { queued: number; running: number } }>('/api/images/tasks', {
+  return authedJson<{ taskId: string; status: ServerImageTask['status']; queue: { queued: number; running: number } }>('/api/images/tasks', {
     method: 'POST',
     body: JSON.stringify({
       localTaskId: opts.localTaskId,
