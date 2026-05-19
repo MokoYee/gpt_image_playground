@@ -30,23 +30,28 @@ const MIME_MAP: Record<TaskParams['output_format'], string> = {
   jpeg: 'image/jpeg',
   webp: 'image/webp',
 }
+const MAX_UPSTREAM_ERROR_BODY_LENGTH = 4000
 
 function buildApiUrl(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`
 }
 
+function truncateErrorBody(text: string): string {
+  const trimmed = text.trim()
+  if (trimmed.length <= MAX_UPSTREAM_ERROR_BODY_LENGTH) return trimmed
+  return `${trimmed.slice(0, MAX_UPSTREAM_ERROR_BODY_LENGTH)}\n... upstream response truncated`
+}
+
 async function getErrorMessage(response: Response): Promise<string> {
   const statusText = response.statusText ? ` ${response.statusText}` : ''
-  const prefix = `上游接口请求失败：HTTP ${response.status}${statusText}`
-  try {
-    const payload = await response.json() as any
-    const message = payload.error?.message || payload.detail || payload.message
-    const body = JSON.stringify(payload, null, 2)
-    return message ? `${prefix}\n${message}\n\n${body}` : `${prefix}\n${body}`
-  } catch {
-    const text = await response.text().catch(() => '')
-    return text.trim() ? `${prefix}\n${text}` : prefix
-  }
+  const prefix = `HTTP ${response.status}${statusText}`
+  const text = await response.text().catch(() => '')
+  if (!text.trim()) return prefix
+  return `${prefix}\n${truncateErrorBody(text)}`
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError'
 }
 
 function normalizeBase64Image(value: string, fallbackMime: string): string {
@@ -204,6 +209,11 @@ export async function callImageProvider(settings: ImageApiSettings, request: Ima
     })
     if (!response.ok) throw new Error(await getErrorMessage(response))
     return parseImagesApiResponse(await response.json(), mime, controller.signal)
+  } catch (error) {
+    if (controller.signal.aborted || isAbortError(error)) {
+      throw new Error(`Request timed out after ${settings.timeoutSeconds}s`)
+    }
+    throw error
   } finally {
     clearTimeout(timeout)
   }

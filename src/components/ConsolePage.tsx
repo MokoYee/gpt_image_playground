@@ -660,10 +660,15 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
       setError('必须选择一个启用的默认模型')
       return
     }
-    const settings = await updateModelProfiles(modelDrafts.map((model) => {
+    const payload = modelDrafts.map((model) => {
       const apiKey = model.apiKey?.trim()
       return apiKey ? { ...model, apiKey } : { ...model, apiKey: undefined }
-    }))
+    })
+    if (payload.some((model) => model.enabled && model.isDefault && !model.id && !model.apiKey)) {
+      setError('默认模型必须配置 API Key')
+      return
+    }
+    const settings = await updateModelProfiles(payload)
     setSystemSettings(settings)
     setModelDrafts(settings.models)
     messageApi.success('模型服务已保存')

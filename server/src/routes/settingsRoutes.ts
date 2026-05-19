@@ -102,6 +102,9 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       const keptIds: string[] = []
       for (const item of body.items) {
         const apiKey = item.apiKey?.trim() || (item.id ? existingKeys.get(item.id) : undefined) || null
+        if (item.enabled && item.isDefault && !apiKey) {
+          throw badRequest('默认模型必须配置 API Key')
+        }
         if (item.id) {
           keptIds.push(item.id)
           await client.query(
