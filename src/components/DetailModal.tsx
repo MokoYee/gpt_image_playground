@@ -57,6 +57,7 @@ export default function DetailModal() {
     () => tasks.find((t) => t.id === detailTaskId) ?? null,
     [tasks, detailTaskId],
   )
+  const errorText = task?.error?.trim() || '生成失败'
 
   useCloseOnEscape(Boolean(task), () => setDetailTaskId(null))
   usePreventBackgroundScroll(Boolean(task), [modalRef, rawUrlsModalRef, rawResponseModalRef])
@@ -263,7 +264,6 @@ export default function DetailModal() {
   }
 
   const handleCopyError = async () => {
-    const errorText = task.error || '生成失败'
     try {
       await copyTextToClipboard(errorText)
       showToast('完整报错已复制', 'success')
@@ -441,20 +441,19 @@ export default function DetailModal() {
             <div className="text-center text-sm text-gray-500">任务已取消</div>
           )}
           {task.status === 'error' && (
-            <div className="w-full max-w-md px-4 text-center">
+            <div className="flex h-full w-full max-w-md flex-col items-center justify-center px-4 py-5 text-center">
               <svg className="w-10 h-10 text-red-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <p
-                className="overflow-hidden whitespace-pre-line text-sm leading-6 text-red-500 break-words"
-                style={{
-                  display: '-webkit-box',
-                  WebkitBoxOrient: 'vertical',
-                  WebkitLineClamp: 4,
-                }}
-              >
-                {task.error || '生成失败'}
-              </p>
+              <div className="w-full rounded-xl border border-red-200/70 bg-white/80 p-3 text-left shadow-sm dark:border-red-400/20 dark:bg-white/[0.04]">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <span className="text-xs font-semibold text-red-500">错误日志</span>
+                  <span className="text-[11px] text-red-400/70">可复制</span>
+                </div>
+                <pre className="max-h-52 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-red-500 custom-scrollbar">
+                  {errorText}
+                </pre>
+              </div>
               <div className="mt-3 flex items-center justify-center gap-2">
                 <div className="relative group">
                   <button

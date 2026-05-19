@@ -36,11 +36,16 @@ function buildApiUrl(baseUrl: string, path: string): string {
 }
 
 async function getErrorMessage(response: Response): Promise<string> {
+  const statusText = response.statusText ? ` ${response.statusText}` : ''
+  const prefix = `上游接口请求失败：HTTP ${response.status}${statusText}`
   try {
     const payload = await response.json() as any
-    return payload.error?.message || payload.detail || payload.message || `HTTP ${response.status}`
+    const message = payload.error?.message || payload.detail || payload.message
+    const body = JSON.stringify(payload, null, 2)
+    return message ? `${prefix}\n${message}\n\n${body}` : `${prefix}\n${body}`
   } catch {
-    return response.text().catch(() => `HTTP ${response.status}`)
+    const text = await response.text().catch(() => '')
+    return text.trim() ? `${prefix}\n${text}` : prefix
   }
 }
 

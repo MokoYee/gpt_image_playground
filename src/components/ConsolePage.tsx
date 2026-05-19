@@ -891,16 +891,18 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
                       <span className={`h-4 w-4 rounded-full bg-white shadow transition ${settingsDraft.registrationOpen ? 'translate-x-4' : 'translate-x-0.5'}`} />
                     </button>
                   </label>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="block">
-                      <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">新用户默认 Credits</span>
-                      <input value={settingsDraft.defaultCredits} onChange={(event) => setSettingsDraft({ ...settingsDraft, defaultCredits: event.target.value })} placeholder={SETTINGS_PLACEHOLDERS.defaultCredits} className="w-full rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm outline-none placeholder:text-gray-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03] dark:placeholder:text-gray-600" />
-                    </label>
-                    <label className="block">
-                      <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">新用户默认倍率</span>
-                      <input value={settingsDraft.defaultMultiplier} onChange={(event) => setSettingsDraft({ ...settingsDraft, defaultMultiplier: event.target.value })} placeholder={SETTINGS_PLACEHOLDERS.defaultMultiplier} className="w-full rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm outline-none placeholder:text-gray-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03] dark:placeholder:text-gray-600" />
-                    </label>
-                  </div>
+                  {settingsDraft.registrationOpen && (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="block">
+                        <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">新用户默认 Credits</span>
+                        <input value={settingsDraft.defaultCredits} onChange={(event) => setSettingsDraft({ ...settingsDraft, defaultCredits: event.target.value })} placeholder={SETTINGS_PLACEHOLDERS.defaultCredits} className="w-full rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm outline-none placeholder:text-gray-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03] dark:placeholder:text-gray-600" />
+                      </label>
+                      <label className="block">
+                        <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">新用户默认倍率</span>
+                        <input value={settingsDraft.defaultMultiplier} onChange={(event) => setSettingsDraft({ ...settingsDraft, defaultMultiplier: event.target.value })} placeholder={SETTINGS_PLACEHOLDERS.defaultMultiplier} className="w-full rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm outline-none placeholder:text-gray-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03] dark:placeholder:text-gray-600" />
+                      </label>
+                    </div>
+                  )}
                   <button onClick={saveAuthSettings} className="rounded-xl bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">保存注册设置</button>
                 </div>
               </section>
