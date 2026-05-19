@@ -20,6 +20,8 @@ export interface SystemSettings {
   auth: AuthSettings
   storage: StorageSettings
   imageApi: ImageApiSettings
+  queue: QueueSettings
+  models: ModelProfile[]
 }
 
 export interface ImageApiSettings {
@@ -29,6 +31,19 @@ export interface ImageApiSettings {
   model: string
   apiMode: 'images' | 'responses'
   timeoutSeconds: number
+}
+
+export interface QueueSettings {
+  globalConcurrency: number
+  defaultUserConcurrency: number
+  maxQueueSize: number
+}
+
+export interface ModelProfile extends ImageApiSettings {
+  id: string
+  name: string
+  enabled: boolean
+  isDefault: boolean
 }
 
 const DEFAULT_AUTH_SETTINGS: AuthSettings = {
@@ -48,6 +63,12 @@ const DEFAULT_IMAGE_API_SETTINGS: ImageApiSettings = {
   model: 'gpt-image-2',
   apiMode: 'images',
   timeoutSeconds: 120,
+}
+
+const DEFAULT_QUEUE_SETTINGS: QueueSettings = {
+  globalConcurrency: 10,
+  defaultUserConcurrency: 3,
+  maxQueueSize: 100,
 }
 
 function normalizeAuthSettings(value: unknown): AuthSettings {
@@ -80,17 +101,52 @@ function normalizeImageApiSettings(value: unknown): ImageApiSettings {
   }
 }
 
-export async function readSystemSettings(pool: DbPool | DbClient): Promise<SystemSettings> {
-  const result = await pool.query<{ key: string; value: unknown }>('select key, value from system_settings where key in ($1, $2, $3)', ['auth', 'storage', 'imageApi'])
-  const map = new Map(result.rows.map((row) => [row.key, row.value]))
+function normalizePositiveInteger(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : fallback
+}
+
+function normalizeQueueSettings(value: unknown): QueueSettings {
+  const record = value && typeof value === 'object' ? value as Record<string, unknown> : {}
   return {
-    auth: normalizeAuthSettings(map.get('auth')),
-    storage: normalizeStorageSettings(map.get('storage')),
-    imageApi: normalizeImageApiSettings(map.get('imageApi')),
+    globalConcurrency: normalizePositiveInteger(record.globalConcurrency, DEFAULT_QUEUE_SETTINGS.globalConcurrency),
+    defaultUserConcurrency: normalizePositiveInteger(record.defaultUserConcurrency, DEFAULT_QUEUE_SETTINGS.defaultUserConcurrency),
+    maxQueueSize: normalizePositiveInteger(record.maxQueueSize, DEFAULT_QUEUE_SETTINGS.maxQueueSize),
   }
 }
 
-export async function writeSetting(pool: DbPool | DbClient, key: 'auth' | 'storage' | 'imageApi', value: unknown, userId: string): Promise<void> {
+export async function readSystemSettings(pool: DbPool | DbClient): Promise<SystemSettings> {
+  const result = await pool.query<{ key: string; value: unknown }>('select key, value from system_settings where key in ($1, $2, $3, $4)', ['auth', 'storage', 'imageApi', 'queue'])
+  const map = new Map(result.rows.map((row) => [row.key, row.value]))
+  const modelResult = await pool.query(
+    `
+      select id::text, name, provider, base_url, api_key, model, api_mode, timeout_seconds, enabled, is_default
+      from model_profiles
+      order by is_default desc, created_at asc
+    `,
+  ).catch(() => ({ rows: [] as any[] }))
+  const imageApi = normalizeImageApiSettings(map.get('imageApi'))
+  const models = modelResult.rows.map((row: any): ModelProfile => ({
+    id: row.id,
+    name: row.name,
+    provider: 'openai-compatible',
+    baseUrl: row.base_url,
+    apiKey: row.api_key ?? undefined,
+    model: row.model,
+    apiMode: row.api_mode === 'responses' ? 'responses' : 'images',
+    timeoutSeconds: Number(row.timeout_seconds ?? 120),
+    enabled: Boolean(row.enabled),
+    isDefault: Boolean(row.is_default),
+  }))
+  return {
+    auth: normalizeAuthSettings(map.get('auth')),
+    storage: normalizeStorageSettings(map.get('storage')),
+    imageApi: models.find((item) => item.enabled && item.isDefault) ?? imageApi,
+    queue: normalizeQueueSettings(map.get('queue')),
+    models,
+  }
+}
+
+export async function writeSetting(pool: DbPool | DbClient, key: 'auth' | 'storage' | 'imageApi' | 'queue', value: unknown, userId: string): Promise<void> {
   await pool.query(
     `
       insert into system_settings (key, value, updated_by, updated_at)

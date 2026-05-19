@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { DbClient } from '../db.js'
 
@@ -18,6 +18,31 @@ export interface StoredFile {
   sha256: string
   mimeType: string
   sizeBytes: number
+}
+
+export interface StoredFileRow {
+  id: string
+  dataUrl?: string
+  relativePath: string
+  sha256: string
+  mimeType: string
+  sizeBytes: number
+  width?: number | null
+  height?: number | null
+  source?: 'upload' | 'generated' | 'mask'
+}
+
+export function mapStoredFileRow(row: any): StoredFileRow {
+  return {
+    id: row.id,
+    relativePath: row.relative_path,
+    sha256: row.sha256,
+    mimeType: row.mime_type,
+    sizeBytes: Number(row.size_bytes),
+    width: row.width == null ? null : Number(row.width),
+    height: row.height == null ? null : Number(row.height),
+    source: row.source,
+  }
 }
 
 function parseDataUrl(dataUrl: string): { mimeType: string; bytes: Buffer } {
@@ -67,6 +92,21 @@ export async function storeImageFile(client: DbClient, input: StoredFileInput): 
   }
 }
 
-export function dataUrlFromBytes(bytes: ArrayBuffer, mimeType: string): string {
-  return `data:${mimeType};base64,${Buffer.from(bytes).toString('base64')}`
+export function dataUrlFromBytes(bytes: ArrayBuffer | Uint8Array, mimeType: string): string {
+  const buffer = bytes instanceof ArrayBuffer ? Buffer.from(new Uint8Array(bytes)) : Buffer.from(bytes)
+  return `data:${mimeType};base64,${buffer.toString('base64')}`
+}
+
+export function resolveStoredImagePath(storageRoot: string, relativePath: string): string {
+  const root = path.resolve(storageRoot)
+  const fullPath = path.resolve(root, relativePath)
+  if (!fullPath.startsWith(`${root}${path.sep}`) && fullPath !== root) {
+    throw new Error('图片路径不合法')
+  }
+  return fullPath
+}
+
+export async function readStoredImageAsDataUrl(storageRoot: string, relativePath: string, mimeType: string): Promise<string> {
+  const bytes = await readFile(resolveStoredImagePath(storageRoot, relativePath))
+  return dataUrlFromBytes(bytes, mimeType)
 }

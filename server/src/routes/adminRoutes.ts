@@ -5,6 +5,7 @@ import { badRequest, conflict, forbidden, notFound } from '../errors.js'
 import { EmailSchema, PaginationSchema, PasswordSchema, toOffset, UsernameSchema } from '../validators.js'
 import { withTransaction } from '../db.js'
 import { readSystemSettings } from '../services/settings.js'
+import { writeAuditLog } from '../services/audit.js'
 
 const RoleSchema = z.enum(['user', 'admin'])
 
@@ -16,6 +17,7 @@ function mapUser(row: any) {
     role: row.role,
     credits: Number(row.credits ?? 0),
     multiplier: Number(row.multiplier ?? 1),
+    concurrencyLimit: row.concurrency_limit == null ? null : Number(row.concurrency_limit),
     disabled: row.status !== 'enabled',
     createdAt: new Date(row.created_at).getTime(),
   }
@@ -36,7 +38,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     params.push(query.pageSize, toOffset(query.page, query.pageSize))
     const result = await app.context.db.query(
       `
-        select u.id::text, u.username, u.email, u.role, u.status, u.created_at, w.credits, w.multiplier,
+        select u.id::text, u.username, u.email, u.role, u.status, u.created_at, w.credits, w.multiplier, w.concurrency_limit,
                count(*) over() as total
         from users u
         join user_wallets w on w.user_id = u.id
@@ -62,6 +64,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       role: RoleSchema.default('user'),
       credits: z.coerce.number().min(0).optional(),
       multiplier: z.coerce.number().min(0).optional(),
+      concurrencyLimit: z.coerce.number().int().min(1).optional().nullable(),
     }).parse(request.body)
     const settings = await readSystemSettings(app.context.db)
     const initialCredits = body.credits ?? settings.auth.defaultCredits
@@ -81,9 +84,13 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         `,
         [body.username, body.email, passwordHash, body.role],
       )
-      await client.query('insert into user_wallets (user_id, credits, multiplier) values ($1, $2, $3)', [created.rows[0].id, initialCredits, initialMultiplier])
-      return { ...created.rows[0], credits: initialCredits, multiplier: initialMultiplier }
+      await client.query(
+        'insert into user_wallets (user_id, credits, multiplier, concurrency_limit) values ($1, $2, $3, $4)',
+        [created.rows[0].id, initialCredits, initialMultiplier, body.concurrencyLimit ?? null],
+      )
+      return { ...created.rows[0], credits: initialCredits, multiplier: initialMultiplier, concurrency_limit: body.concurrencyLimit ?? null }
     })
+    await writeAuditLog(app.context.db, request.user, 'admin.user.create', 'user', user.id, { role: user.role })
     return { user: mapUser(user) }
   })
 
@@ -93,6 +100,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       role: RoleSchema.optional(),
       disabled: z.boolean().optional(),
       multiplier: z.coerce.number().min(0).optional(),
+      concurrencyLimit: z.coerce.number().int().min(1).optional().nullable(),
     }).parse(request.body)
     const user = await withTransaction(app.context.db, async (client) => {
       if (body.role || body.disabled !== undefined) {
@@ -110,9 +118,12 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       if (body.multiplier !== undefined) {
         await client.query('update user_wallets set multiplier = $1, updated_at = now(), version = version + 1 where user_id = $2', [body.multiplier, params.userId])
       }
+      if (body.concurrencyLimit !== undefined) {
+        await client.query('update user_wallets set concurrency_limit = $1, updated_at = now(), version = version + 1 where user_id = $2', [body.concurrencyLimit, params.userId])
+      }
       const result = await client.query(
         `
-          select u.id::text, u.username, u.email, u.role, u.status, u.created_at, w.credits, w.multiplier
+          select u.id::text, u.username, u.email, u.role, u.status, u.created_at, w.credits, w.multiplier, w.concurrency_limit
           from users u join user_wallets w on w.user_id = u.id
           where u.id = $1 and u.status <> 'deleted'
         `,
@@ -120,6 +131,12 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       )
       if (!result.rows[0]) throw notFound('用户不存在')
       return result.rows[0]
+    })
+    await writeAuditLog(app.context.db, request.user, 'admin.user.update', 'user', params.userId, {
+      role: body.role,
+      disabled: body.disabled,
+      multiplier: body.multiplier,
+      concurrencyLimit: body.concurrencyLimit,
     })
     return { user: mapUser(user) }
   })
@@ -132,6 +149,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       [params.userId],
     )
     if (!result.rowCount) throw notFound('用户不存在')
+    await writeAuditLog(app.context.db, request.user, 'admin.user.delete', 'user', params.userId)
     return { ok: true }
   })
 
@@ -154,7 +172,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       )
       const result = await client.query(
         `
-          select u.id::text, u.username, u.email, u.role, u.status, u.created_at, w.credits, w.multiplier
+          select u.id::text, u.username, u.email, u.role, u.status, u.created_at, w.credits, w.multiplier, w.concurrency_limit
           from users u join user_wallets w on w.user_id = u.id
           where u.id = $1
         `,
@@ -162,6 +180,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       )
       return result.rows[0]
     })
+    await writeAuditLog(app.context.db, request.user, `admin.user.${body.type}`, 'user', params.userId, { amount: body.amount })
     return { user: mapUser(user) }
   })
 

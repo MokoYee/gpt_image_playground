@@ -1,7 +1,7 @@
 import { SignJWT, jwtVerify } from 'jose'
 import bcrypt from 'bcryptjs'
 import type { FastifyReply, FastifyRequest } from 'fastify'
-import { unauthorized, forbidden } from './errors.js'
+import { AppError, unauthorized, forbidden } from './errors.js'
 import type { DbPool } from './db.js'
 
 export type UserRole = 'user' | 'admin'
@@ -39,9 +39,14 @@ export async function signToken(secret: string, expiresInSeconds: number, user: 
 }
 
 export async function verifyToken(secret: string, token: string): Promise<{ userId: string }> {
-  const { payload } = await jwtVerify(token, encoder.encode(secret))
-  if (!payload.sub) throw unauthorized()
-  return { userId: payload.sub }
+  try {
+    const { payload } = await jwtVerify(token, encoder.encode(secret))
+    if (!payload.sub) throw unauthorized()
+    return { userId: payload.sub }
+  } catch (error) {
+    if (error instanceof AppError) throw error
+    throw unauthorized('登录已失效，请重新登录')
+  }
 }
 
 export async function getAuthUser(pool: DbPool, userId: string): Promise<AuthUser | null> {

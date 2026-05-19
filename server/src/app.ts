@@ -11,6 +11,7 @@ import { registerAdminRoutes } from './routes/adminRoutes.js'
 import { registerSettingsRoutes } from './routes/settingsRoutes.js'
 import { registerUsageRoutes } from './routes/usageRoutes.js'
 import { registerImageRoutes } from './routes/imageRoutes.js'
+import { ImageQueueWorker } from './services/imageQueue.js'
 
 export interface AppContext {
   config: AppConfig
@@ -26,6 +27,10 @@ export async function createApp(context: AppContext) {
   })
 
   app.decorate('context', context)
+  app.decorate('imageQueue', new ImageQueueWorker(context.db, {
+    storageRoot: context.config.IMAGE_STORAGE_PATH,
+    logger: app.log,
+  }))
   app.setErrorHandler(errorHandler)
 
   await app.register(cors, { origin: true, credentials: true })
@@ -43,6 +48,13 @@ export async function createApp(context: AppContext) {
   await registerSettingsRoutes(app)
   await registerUsageRoutes(app)
   await registerImageRoutes(app)
+
+  app.addHook('onReady', async () => {
+    app.imageQueue?.start()
+  })
+  app.addHook('onClose', async () => {
+    app.imageQueue?.stop()
+  })
 
   const publicDir = path.resolve(process.cwd(), 'dist')
   await app.register(staticPlugin, {

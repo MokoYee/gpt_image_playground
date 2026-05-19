@@ -14,6 +14,7 @@ function publicUser(row: any) {
     role: row.role,
     credits: Number(row.credits ?? 0),
     multiplier: Number(row.multiplier ?? 1),
+    concurrencyLimit: row.concurrency_limit == null ? null : Number(row.concurrency_limit),
     disabled: row.status !== 'enabled',
     createdAt: new Date(row.created_at).getTime(),
   }
@@ -27,7 +28,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     }).parse(request.body)
     const result = await app.context.db.query(
       `
-        select u.id::text, u.username, u.email, u.password_hash, u.role, u.status, w.credits, w.multiplier, u.created_at
+        select u.id::text, u.username, u.email, u.password_hash, u.role, u.status, w.credits, w.multiplier, w.concurrency_limit, u.created_at
         from users u
         join user_wallets w on w.user_id = u.id
         where (lower(u.username) = lower($1) or lower(u.email) = lower($1))
@@ -79,7 +80,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
   app.get('/api/auth/me', { preHandler: requireAuth }, async (request) => {
     const result = await app.context.db.query(
       `
-        select u.id::text, u.username, u.email, u.role, u.status, w.credits, w.multiplier, u.created_at
+        select u.id::text, u.username, u.email, u.role, u.status, w.credits, w.multiplier, w.concurrency_limit, u.created_at
         from users u join user_wallets w on w.user_id = u.id
         where u.id = $1
       `,
