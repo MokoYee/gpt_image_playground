@@ -54,16 +54,57 @@ function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError'
 }
 
+function getErrorField(error: unknown, field: string): unknown {
+  return error && typeof error === 'object' && field in error ? (error as Record<string, unknown>)[field] : undefined
+}
+
+function formatErrorDetails(error: unknown): string {
+  const lines: string[] = []
+  const name = getErrorField(error, 'name')
+  const message = error instanceof Error ? error.message : String(error)
+  if (typeof name === 'string' && name) lines.push(`${name}: ${message}`)
+  else lines.push(message)
+
+  const cause = getErrorField(error, 'cause')
+  if (cause && typeof cause === 'object') {
+    const causeName = getErrorField(cause, 'name')
+    const causeMessage = getErrorField(cause, 'message')
+    const causeCode = getErrorField(cause, 'code')
+    const causeSyscall = getErrorField(cause, 'syscall')
+    const causeAddress = getErrorField(cause, 'address')
+    const causePort = getErrorField(cause, 'port')
+    const causeHost = getErrorField(cause, 'host') ?? getErrorField(cause, 'hostname')
+    const causeParts = [
+      typeof causeName === 'string' && causeName ? causeName : undefined,
+      typeof causeCode === 'string' && causeCode ? `code=${causeCode}` : undefined,
+      typeof causeSyscall === 'string' && causeSyscall ? `syscall=${causeSyscall}` : undefined,
+      typeof causeAddress === 'string' && causeAddress ? `address=${causeAddress}` : undefined,
+      typeof causeHost === 'string' && causeHost ? `host=${causeHost}` : undefined,
+      typeof causePort === 'number' || typeof causePort === 'string' ? `port=${causePort}` : undefined,
+    ].filter(Boolean)
+    if (causeParts.length) lines.push(`cause: ${causeParts.join(' ')}`)
+    if (typeof causeMessage === 'string' && causeMessage && causeMessage !== message) {
+      lines.push(`cause.message: ${causeMessage}`)
+    }
+  }
+
+  return truncateErrorBody(lines.join('\n'))
+}
+
 function normalizeBase64Image(value: string, fallbackMime: string): string {
   return value.startsWith('data:') ? value : `data:${fallbackMime};base64,${value}`
 }
 
 async function fetchImageAsDataUrl(url: string, fallbackMime: string, signal: AbortSignal): Promise<string> {
   if (url.startsWith('data:')) return url
-  const response = await fetch(url, { signal })
-  if (!response.ok) throw new Error(`图片下载失败：HTTP ${response.status}`)
-  const contentType = response.headers.get('content-type') || fallbackMime
-  return dataUrlFromBytes(await response.arrayBuffer(), contentType)
+  try {
+    const response = await fetch(url, { signal })
+    if (!response.ok) throw new Error(`HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ''}`)
+    const contentType = response.headers.get('content-type') || fallbackMime
+    return dataUrlFromBytes(await response.arrayBuffer(), contentType)
+  } catch (error) {
+    throw new Error(`Image download failed\nurl=${url}\n${formatErrorDetails(error)}`)
+  }
 }
 
 function pickActualParams(source: any): Partial<TaskParams> {
@@ -213,7 +254,7 @@ export async function callImageProvider(settings: ImageApiSettings, request: Ima
     if (controller.signal.aborted || isAbortError(error)) {
       throw new Error(`Request timed out after ${settings.timeoutSeconds}s`)
     }
-    throw error
+    throw new Error(formatErrorDetails(error))
   } finally {
     clearTimeout(timeout)
   }
