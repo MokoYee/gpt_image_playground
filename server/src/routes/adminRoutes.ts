@@ -179,6 +179,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const body = z.object({
       type: z.enum(['recharge', 'refund']),
       amount: z.coerce.number().positive(),
+      note: z.string().trim().max(500).optional(),
     }).parse(request.body)
     const user = await withTransaction(app.context.db, async (client) => {
       const wallet = await client.query('select credits from user_wallets where user_id = $1 for update', [params.userId])
@@ -188,8 +189,8 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       if (nextCredits < 0) throw badRequest('退款金额不能超过当前余额')
       await client.query('update user_wallets set credits = $1, updated_at = now(), version = version + 1 where user_id = $2', [nextCredits, params.userId])
       await client.query(
-        'insert into credit_records (user_id, type, amount, operator_id) values ($1, $2, $3, $4)',
-        [params.userId, body.type, body.amount, request.user.id],
+        'insert into credit_records (user_id, type, amount, operator_id, note) values ($1, $2, $3, $4, $5)',
+        [params.userId, body.type, body.amount, request.user.id, body.note ?? ''],
       )
       const result = await client.query(
         `
@@ -207,7 +208,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       )
       return result.rows[0]
     })
-    await writeAuditLog(app.context.db, request.user, `admin.user.${body.type}`, 'user', params.userId, { amount: body.amount })
+    await writeAuditLog(app.context.db, request.user, `admin.user.${body.type}`, 'user', params.userId, { amount: body.amount, note: body.note ?? '' })
     return { user: mapUser(user) }
   })
 
@@ -215,7 +216,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const query = PaginationSchema.parse(request.query)
     const result = await app.context.db.query(
       `
-        select cr.id::text, cr.user_id::text, u.username, cr.type, cr.amount, op.username as operator_username, cr.created_at,
+        select cr.id::text, cr.user_id::text, u.username, cr.type, cr.amount, cr.note, op.username as operator_username, cr.created_at,
                count(*) over() as total
         from credit_records cr
         join users u on u.id = cr.user_id
@@ -232,6 +233,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         username: row.username,
         type: row.type,
         amount: Number(row.amount),
+        note: row.note ?? '',
         operatorUsername: row.operator_username,
         createdAt: new Date(row.created_at).getTime(),
       })),

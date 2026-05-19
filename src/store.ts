@@ -1259,7 +1259,7 @@ export async function submitTask(options: { allowFullMask?: boolean; useCurrentA
     maskTargetImageId,
     maskImageId,
     outputImages: [],
-    status: sessionUser ? 'queued' : 'running',
+    status: 'running',
     error: null,
     createdAt: Date.now(),
     finishedAt: null,
@@ -1333,11 +1333,11 @@ async function executeTask(taskId: string) {
       })
       updateTaskInStore(taskId, {
         serverTaskId: result.taskId,
-        status: 'queued',
+        status: result.status === 'queued' ? 'queued' : 'running',
         queuePosition: result.queue.queued,
       })
       scheduleServerTaskPoll(result.taskId, 800)
-      useStore.getState().showToast(result.queue.queued > 0 ? `已加入队列，前方 ${Math.max(0, result.queue.queued - 1)} 个任务` : '任务已提交', 'success')
+      useStore.getState().showToast(result.status === 'queued' && result.queue.queued > 0 ? `已加入队列，前方 ${Math.max(0, result.queue.queued - 1)} 个任务` : '任务已提交', 'success')
       return
     }
 
@@ -1490,7 +1490,7 @@ export async function retryTask(task: TaskRecord) {
     maskTargetImageId: task.maskTargetImageId ?? null,
     maskImageId: task.maskImageId ?? null,
     outputImages: [],
-    status: sessionUser ? 'queued' : 'running',
+    status: 'running',
     error: null,
     createdAt: Date.now(),
     finishedAt: null,

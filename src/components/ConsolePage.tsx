@@ -65,6 +65,7 @@ const EMPTY_EDIT_USER_FORM = {
 
 const EMPTY_CREDIT_FORM = {
   amount: '',
+  note: '',
 }
 
 const DEFAULT_MODEL_DRAFT: ModelProfile = {
@@ -402,8 +403,8 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
       return
     }
     const password = editUserForm.password
-    if (password && (password.length < 8 || password.length > 72 || !/[A-Za-z]/.test(password) || !/\d/.test(password) || /\s/.test(password))) {
-      setError('新密码需为 8-72 位，包含字母和数字，且不能包含空格')
+    if (password && (password.length < 6 || password.length > 72)) {
+      setError('新密码需为 6-72 位')
       return
     }
     await updateUser(editingUser.id, {
@@ -449,7 +450,7 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
       setError('请输入大于 0 的金额')
       return
     }
-    await adjustUserCredits(creditTarget.user.id, value, creditTarget.type)
+    await adjustUserCredits(creditTarget.user.id, value, creditTarget.type, creditForm.note.trim())
     setCreditTarget(null)
     await refresh()
   }
@@ -735,6 +736,7 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
                         <div>
                           <div className="font-medium text-gray-800 dark:text-gray-100">{user?.username ?? '未知用户'} · {record.type === 'recharge' ? '充值' : '退款'} {record.amount} Credits</div>
                           <div className="mt-0.5 text-xs text-gray-500">管理员：{record.operatorUsername}</div>
+                          {record.note ? <div className="mt-1 line-clamp-2 text-xs text-gray-500">备注：{record.note}</div> : null}
                         </div>
                         <div className="text-xs text-gray-500">{formatTime(record.createdAt)}</div>
                         <span className={`rounded-lg px-2.5 py-1 text-xs font-medium ${record.type === 'recharge' ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300' : 'bg-gray-100 text-gray-600 dark:bg-white/[0.08] dark:text-gray-300'}`}>
@@ -996,7 +998,10 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
             <div className="grid gap-3 px-5 py-4">
               <input value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} placeholder="用户名" className="rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
               <input value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} type="email" placeholder="邮箱" className="rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
-              <input value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} type="password" placeholder="密码" className="rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
+              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                <input value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} type="text" placeholder="密码，至少 6 位" className="rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
+                <button type="button" onClick={() => setForm((draft) => ({ ...draft, password: generatePassword() }))} className="rounded-xl bg-gray-100 px-3.5 py-2.5 text-sm font-semibold text-gray-700 dark:bg-white/[0.08] dark:text-gray-200">随机生成</button>
+              </div>
               <div className="grid grid-cols-3 gap-2">
                 <input value={form.credits} onChange={(event) => setForm({ ...form, credits: event.target.value })} placeholder="Credits" className="rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
                 <input value={form.multiplier} onChange={(event) => setForm({ ...form, multiplier: event.target.value })} placeholder="倍率" className="rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
@@ -1092,12 +1097,16 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
                 <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
                   <div className="flex items-center rounded-xl border border-gray-200/70 bg-white px-3 shadow-sm transition focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]">
                     <span className="pr-3 text-lg font-semibold text-gray-400">$</span>
-                    <input value={creditForm.amount} onChange={(event) => setCreditForm({ amount: event.target.value })} placeholder="0" className="min-w-0 flex-1 bg-transparent py-2.5 text-sm outline-none" />
+                    <input value={creditForm.amount} onChange={(event) => setCreditForm((draft) => ({ ...draft, amount: event.target.value }))} placeholder="0" className="min-w-0 flex-1 bg-transparent py-2.5 text-sm outline-none" />
                   </div>
                   {creditTarget.type === 'refund' && (
-                    <button type="button" onClick={() => setCreditForm({ amount: String(Math.max(0, creditTarget.user.credits)) })} className="rounded-xl border border-gray-200/70 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:hover:bg-white/[0.08]">全部</button>
+                    <button type="button" onClick={() => setCreditForm((draft) => ({ ...draft, amount: String(Math.max(0, creditTarget.user.credits)) }))} className="rounded-xl border border-gray-200/70 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:hover:bg-white/[0.08]">全部</button>
                   )}
                 </div>
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-semibold text-gray-700 dark:text-gray-200">备注</span>
+                <textarea value={creditForm.note} onChange={(event) => setCreditForm((draft) => ({ ...draft, note: event.target.value }))} rows={3} maxLength={500} placeholder="填写本次操作备注" className="w-full resize-none rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 dark:border-white/[0.08] dark:bg-white/[0.03]" />
               </label>
               {error && <div className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600 dark:bg-red-500/10 dark:text-red-300">{error}</div>}
             </div>
