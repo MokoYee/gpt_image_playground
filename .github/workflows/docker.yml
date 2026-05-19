@@ -7,6 +7,7 @@ on:
       - '**/*.md'
       - 'docs/**'
       - 'node.txt'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -18,6 +19,7 @@ concurrency:
 
 jobs:
   docker:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
