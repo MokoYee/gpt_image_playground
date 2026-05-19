@@ -77,11 +77,15 @@ export default function App() {
   useEffect(() => {
     void fetchCurrentUser().then((user) => setAuthSession(user))
     void readPublicSettings().then((settings) => {
-      setAppName(settings.site.appName || DEFAULT_APP_NAME)
+      setAppName(settings.site?.appName || DEFAULT_APP_NAME)
     }).catch(() => {
       setAppName(DEFAULT_APP_NAME)
     })
   }, [])
+
+  useEffect(() => {
+    document.title = appName.trim() || DEFAULT_APP_NAME
+  }, [appName])
 
   const navigateView = (nextView: AppView, replace = false) => {
     const nextHash = nextView === 'app' ? '' : `#/${nextView}`

@@ -101,7 +101,7 @@ export default function AuthPage({ appName, onAppNameChange, onAuthenticated }: 
   useEffect(() => {
     void readPublicSettings()
       .then((settings) => {
-        onAppNameChange?.(settings.site.appName || DEFAULT_APP_NAME)
+        onAppNameChange?.(settings.site?.appName || DEFAULT_APP_NAME)
         setRegistrationOpen(settings.auth.registrationOpen)
         if (!settings.auth.registrationOpen) setMode('login')
       })
