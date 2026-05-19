@@ -325,7 +325,7 @@ export default function SettingsModal() {
 
   useEffect(() => {
     void readPublicSettings()
-      .then((settings) => setAppName(settings.site.appName || DEFAULT_APP_NAME))
+      .then((settings) => setAppName(settings.site?.appName || DEFAULT_APP_NAME))
       .catch(() => setAppName(DEFAULT_APP_NAME))
   }, [])
 
@@ -1146,7 +1146,7 @@ export default function SettingsModal() {
                     </button>
                   </div>
                   <div data-selectable-text className="text-xs text-gray-500 dark:text-gray-500">
-                    关闭后，不再持久化提示词和参考图，下次启动会使用空输入框。
+                    关闭后，下次打开会显示空输入框。
                   </div>
                 </div>
                 <div className="block">

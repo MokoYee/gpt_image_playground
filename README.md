@@ -2,28 +2,28 @@
 
 # 🎨 GPT Image Playground
 
-[![GitHub Repo stars](https://img.shields.io/github/stars/CookSleep/gpt_image_playground?style=flat-square&color=eab308)](https://github.com/CookSleep/gpt_image_playground/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/CookSleep/gpt_image_playground?style=flat-square&color=3b82f6)](https://github.com/CookSleep/gpt_image_playground/network/members)
-[![License](https://img.shields.io/badge/license-MIT-10b981?style=flat-square)](https://github.com/CookSleep/gpt_image_playground/blob/main/LICENSE)
+[![GitHub Repo stars](https://img.shields.io/github/stars/MokoYee/gpt_image_playground?style=flat-square&color=eab308)](https://github.com/MokoYee/gpt_image_playground/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/MokoYee/gpt_image_playground?style=flat-square&color=3b82f6)](https://github.com/MokoYee/gpt_image_playground/network/members)
+[![License](https://img.shields.io/badge/license-MIT-10b981?style=flat-square)](LICENSE)
 [![React](https://img.shields.io/badge/React-19-20232A?style=flat-square&logo=react&logoColor=61DAFB)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 
-**基于 OpenAI gpt-image-2 API 的图片生成与编辑工具**
+**带用户管理、队列与计费能力的 gpt-image-2 图片生成与编辑平台**
 
-提供简洁精美的 Web UI，支持 OpenAI / OpenAI 兼容接口、fal.ai 与可导入的自定义 HTTP 服务商。<br>
-支持文本生图、参考图与遮罩编辑，数据纯本地化存储，带来流畅的历史记录与参数管理体验。
+提供简洁精美的 Web UI，支持 OpenAI 兼容模型服务、文本生图、参考图与遮罩编辑。<br>
+当前版本已引入 Node.js 后端、PostgreSQL 持久化、用户额度、任务队列和管理控制台，适合以 Docker Compose 方式部署为完整服务。
 
 <br>
 
-[![Vercel 在线体验](https://img.shields.io/badge/Vercel-%E5%9C%A8%E7%BA%BF%E4%BD%93%E9%AA%8C-black?style=for-the-badge&logo=vercel&logoColor=white)](https://gpt-image-playground.cooksleep.dev)
+[![Docker Image](https://img.shields.io/badge/GHCR-Docker%20Image-0f172a?style=for-the-badge&logo=docker&logoColor=white)](https://github.com/MokoYee/gpt_image_playground/pkgs/container/gpt_image_playground)
 &nbsp;&nbsp;&nbsp;
-[![GitHub Pages 在线体验](https://img.shields.io/badge/GitHub%20Pages-%E5%9C%A8%E7%BA%BF%E4%BD%93%E9%AA%8C-222222?style=for-the-badge&logo=github&logoColor=white)](https://cooksleep.github.io/gpt_image_playground)
+[![Main Build](https://img.shields.io/badge/main-auto%20docker%20build-2563eb?style=for-the-badge&logo=githubactions&logoColor=white)](https://github.com/MokoYee/gpt_image_playground/actions)
 
 </div>
 
 <br>
 
-> 💡 **提示**：若需调用非 HTTPS 的内网或本地 HTTP API，请使用 GitHub Pages 版本或自行部署，Vercel 部署的体验版绑定的 `.dev` 域名因安全策略通常要求接口必须为 HTTPS。
+> 💡 **提示**：本版本不再是纯静态前端应用。Vercel、GitHub Pages、Cloudflare Pages/Workers 等静态部署方式只能承载旧版前端，无法提供登录、额度、队列、历史图片和管理后台。生产或测试环境请使用 Docker Compose 部署完整服务。
 
 ---
 
@@ -81,15 +81,16 @@
 - **智能尺寸控制**：提供 1K/2K/4K 快速预设，自定义宽高时会自动规整至模型安全范围（16 的倍数、总像素校验等）。
 - **实际参数对比**：自动提取 API 响应中真实生效的尺寸、质量、耗时以及**模型改写后的提示词**，与你的请求参数高亮对比。支持定制化的参数列表横向平滑滚动体验。
 
-### 📁 高效历史管理 (纯本地)
-- **瀑布流与画廊**：历史任务自动保存，支持按状态过滤、全屏大图预览与快捷下载。
+### 📁 持久化历史管理
+- **瀑布流与画廊**：历史任务自动保存到后端，支持按状态过滤、全屏大图预览与快捷下载。
 - **快捷批量操作**：桌面端支持鼠标拖拽框选、Ctrl/⌘ 连选，移动端支持顺滑侧滑多选；轻松实现批量收藏与清理。
-- **极致性能与隐私**：所有记录与图片均存放在浏览器 IndexedDB 中（采用 SHA-256 去重压缩），不经过任何第三方服务器。支持一键打包导出 ZIP 备份。
+- **持久化存储**：任务记录、额度记录、系统设置保存在 PostgreSQL；生成图片默认保存到服务器本地目录，Docker 部署时请挂载图片目录。后续可扩展到 S3 对象存储。
 
-### 🔌 多配置与服务商增强
-- **多配置管理**：支持创建并保存多个 API 配置（包含服务商、API Key、模型等），按需快速切换；支持一键复制当前配置到列表底部，并通过拖拽对配置列表与服务商列表进行自定义排序。
-- **多服务商接入**：内置 OpenAI 兼容接口（含 `Images API` 和 `Responses API`）、fal.ai（支持队列），并支持通过 JSON 导入自定义 HTTP 服务商配置（兼容同步/异步任务）。
-- **API 代理**：OpenAI 兼容接口与 fal.ai 均可配置自定义代理。其中 OpenAI 兼容接口可开启同源 `/api-proxy/` 代理，交由 Docker 或本地开发环境转发至真实 API，绕开浏览器 CORS 限制。
+### 🔌 管理后台与模型服务
+- **用户管理**：支持注册开关、默认 Credits、用户备注、启用/禁用、软删除、管理员充值/退款、专属倍率和专属并发。
+- **队列控制**：支持系统全局并发和默认用户并发。任务超过并发上限时进入队列，前端可查看排队数量并在未开始前取消。
+- **模型服务配置**：管理员在控制台维护 OpenAI 兼容模型服务，API Key 保存后不回显；生图请求由后端统一代理调用上游。
+- **使用记录与审计**：管理员可按用户、模型、状态、时间和关键字查看使用记录；关键管理操作写入审计日志。
 - **Codex CLI 兼容模式**：对上游为 Codex CLI 的 API，开启后应用 Codex CLI 实际支持的参数，并将多图生成拆分为并发单图。
 - **提示词防改写**：Responses API 会始终在请求文本前加入强制指令防止提示词被改写；开启 Codex CLI 模式后，Images API 也会获得同等保护。
 - **智能诊断提示**：当检测到接口异常改写行为或缺少常规参数时，自动提示开启相应的兼容模式。
@@ -99,153 +100,160 @@
 
 ## 🚀 部署与使用
 
-支持多种部署与开发方式。无论使用哪种方式，你都可以预设默认的 API 节点。
+当前版本需要 Node.js 后端和 PostgreSQL。推荐使用 Docker Compose 部署完整服务；静态页面或无服务器部署不再适合作为正式运行方式。
 
 <details>
-<summary><strong>▲ 方式一：Vercel 一键部署 (推荐)</strong></summary>
+<summary><strong>🐳 方式一：Docker Compose 部署 (推荐)</strong></summary>
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FCookSleep%2Fgpt_image_playground&project-name=gpt-image-playground&repository-name=gpt-image-playground)
+官方镜像已发布至 GitHub Container Registry。数据库请使用已有 PostgreSQL 服务，本项目 compose 不内置数据库。
 
-点击上方按钮导入仓库即可，Vercel 会自动执行构建并部署静态文件。
-
-**配置默认 API URL**：在 Vercel 项目的 **Settings → Environment Variables** 中添加 `VITE_DEFAULT_API_URL`（如 `https://api.openai.com/v1`），然后重新部署即可生效。
-
-**绑定自定义域名 (国内直连)**：Vercel 默认分配的 `.vercel.app` 域名在国内通常无法直接访问。如果你希望在国内直连访问，请在 Vercel 项目的 **Settings → Domains** 中绑定你自己的域名。
-
-**配置自动更新**：
-
-本项目已在 `vercel.json` 中关闭了默认的自动部署。若需在同步 GitHub 上游代码后自动更新 Vercel 部署：
-
-1. 在 Vercel 项目设置 **Settings -> Git** 的 **Deploy Hooks** 中创建一个名为 `Release` 的 Hook（Branch 填 `main`）并复制生成的 URL。
-2. 在你 Fork 的 GitHub 仓库设置 **Settings -> Secrets and variables -> Actions** 中，新建 Secret `VERCEL_DEPLOY_HOOK`，填入刚才的 URL。
-
-此后，每次在 GitHub 点击 **Sync fork** 同步上游，都会自动触发 Vercel 构建部署最新版。
-
-</details>
-
-<details>
-<summary><strong>☁️ 方式二：Cloudflare Workers 部署</strong></summary>
-
-项目已内置 Wrangler 配置，可将 Vite 构建产物作为 Cloudflare Workers 静态资源部署。
-
-**1. 登录 Cloudflare**
+**1. 准备目录**
 
 ```bash
-npx wrangler login
+mkdir -p /data/gpt-image-playground/images
+cd /data/gpt-image-playground
 ```
 
-**2. 部署到 Workers**
+**2. 创建 `.env`**
 
-```bash
-npm run deploy:cf
+```env
+TZ=Asia/Shanghai
+SERVER_PORT=8080
+DATABASE_URL=postgresql://用户名:密码@数据库地址:5432/数据库名
+JWT_SECRET=请替换为至少32位的随机字符串
+JWT_EXPIRES_IN_SECONDS=604800
+
+# 仅在数据库中不存在管理员账号时生效
+ADMIN_USERNAME=admin
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=请替换为强密码
 ```
 
-部署脚本会先执行 `npm run build`，再通过 `wrangler deploy` 上传 `dist/` 目录。
-
-**配置默认 API URL**：Cloudflare Workers 的环境变量不会自动改写已经构建好的静态文件。若需预设默认 API 地址，请在构建前设置 `VITE_DEFAULT_API_URL` 后再部署。
-
-```bash
-VITE_DEFAULT_API_URL=https://api.openai.com/v1 npm run deploy:cf
-```
-
-PowerShell 示例：
-
-```powershell
-$env:VITE_DEFAULT_API_URL="https://api.openai.com/v1"; npm run deploy:cf
-```
-
-</details>
-
-<details>
-<summary><strong>🐳 方式三：Docker 部署</strong></summary>
-
-官方镜像已发布至 GitHub Container Registry。Docker 部署支持在运行时注入默认配置。
-
-**环境变量说明：**
-
-- `DEFAULT_API_URL`：设置页面上默认显示的 API 地址。
-- `API_PROXY_URL`：配置内置代理实际转发到的目标 API 地址（仅开启代理时有效）。
-- `ENABLE_API_PROXY`：设为 `true` 开启容器内置 Nginx 同源代理，用于解决浏览器跨域（CORS）限制。开启后，前端 **API 代理** 开关默认开启，浏览器会请求同源的 `/api-proxy/`，再由 Nginx 转发至 `API_PROXY_URL`；用户仍可在设置中手动关闭。
-- `LOCK_API_PROXY`：设为 `true` 时，在 `ENABLE_API_PROXY=true` 的前提下将前端 **API 代理** 开关强制锁定为开启，用户无法关闭。
-- `HOST` / `PORT`：指定容器内 Nginx 监听的地址和端口（默认 `0.0.0.0:80`）。
-
-> ⚠️ **安全警告**：开启 API 代理后，任何人都能将你的服务器作为代理来请求目标 API。建议仅在有访问控制（如 IP 白名单）或本地网络中开启。
-
-> 💡 **兼容迁移**：旧版本中的 `API_URL` 已拆分为 `DEFAULT_API_URL` 和 `API_PROXY_URL`。容器启动时会自动将遗留的 `API_URL` 作为两个新变量的兜底值，实现无缝兼容。建议更新配置文件，逐步迁移至新变量。
-
-**1. Docker CLI 示例**
-
-```bash
-docker run -d -p 8080:80 \
-  -e DEFAULT_API_URL=https://api.openai.com/v1 \
-  -e ENABLE_API_PROXY=true \
-  -e LOCK_API_PROXY=true \
-  -e API_PROXY_URL=https://api.openai.com/v1 \
-  ghcr.io/cooksleep/gpt_image_playground:latest
-```
-
-*(注：使用 host 网络时加 `--network host`，修改容器监听端口使用 `-e PORT=28080`)*
-
-**2. Docker Compose 示例**
+**3. 创建 `docker-compose.yml`**
 
 ```yaml
 services:
   gpt-image-playground:
-    image: ghcr.io/cooksleep/gpt_image_playground:latest
-    environment:
-      - DEFAULT_API_URL=https://api.openai.com/v1
-    ports:
-      - "8080:80"
+    image: ghcr.io/mokoyee/gpt_image_playground:latest
+    container_name: gpt-image-playground
     restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${SERVER_PORT:-8080}:8080"
+    environment:
+      NODE_ENV: production
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 8080
+      IMAGE_STORAGE_PATH: /data/images
+    volumes:
+      - ./images:/data/images
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 ```
 
-**更新说明：**
+**4. 启动与更新**
 
-使用 `latest` 标签时，重新拉取镜像并重启即可更新（如 `docker compose pull && docker compose up -d`）。若需固定版本可使用官方提供的版本号标签（如 `0.2.x`）。
+```bash
+docker compose pull
+docker compose up -d
+```
+
+更新版本时重新执行：
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+应用启动时会自动执行 `server/migrations` 下的数据库迁移脚本，并检查已执行脚本的 checksum。请不要修改已发布迁移文件，新增结构变更应追加新的迁移脚本。
 
 </details>
 
 <details>
-<summary><strong>💻 方式四：本地开发与静态构建</strong></summary>
+<summary><strong>💻 方式二：本地开发</strong></summary>
 
-**1. 环境准备与启动**
+**1. 准备本地配置**
 
-你可以在项目根目录新建 `.env.local` 文件配置默认 API URL（如 `VITE_DEFAULT_API_URL=https://api.openai.com/v1`）。然后安装依赖并启动：
+复制示例环境变量文件并填写数据库地址：
+
+```bash
+cp .env.local.example .env.local
+```
+
+至少需要配置：
+
+```env
+DATABASE_URL=postgresql://用户名:密码@127.0.0.1:5432/gpt-image
+JWT_SECRET=01234567890123456789012345678901
+ADMIN_USERNAME=admin
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=Admin123456
+```
+
+**2. 安装依赖并启动后端**
 
 ```bash
 npm install
+npm run dev:server
+```
+
+后端默认监听 `http://localhost:8080`，会自动运行迁移并在首次启动时创建管理员账号。
+
+**3. 启动前端开发服务**
+
+```bash
 npm run dev
 ```
 
-**2. 本地开发跨域代理 (可选)**
+前端开发服务默认运行在 Vite 端口，API 请求会走同源路径。若需要完整模拟生产环境，也可以直接访问后端服务端口，由后端托管构建后的 `dist/`。
 
-如果在本地开发时遇到浏览器的 CORS 限制，可开启本地代理转发：
-
-```bash
-cp dev-proxy.config.example.json dev-proxy.config.json
-```
-
-修改 `dev-proxy.config.json`，将 `target` 设置为真实的图片接口地址。重启开发服务器后，在页面设置中开启 **API 代理** 即可（请求将被转发如 `http://localhost:5173/api-proxy/... -> target/...`）。此功能仅在 `npm run dev` 阶段生效，不会影响打包产物。
-
-**3. 本地故障模拟 API (可选)**
-
-如果需要复现图片 URL 跨域、接口返回结构异常、原始响应查看等问题，可启动内置模拟服务：
-
-```powershell
-npm run mock:api
-```
-
-使用方式见 [本地故障模拟 API](docs/mock-image-api.md)。
-
-**4. 构建静态产物**
+**4. 构建**
 
 ```bash
 npm run build
 ```
 
-构建输出的文件位于 `dist/` 目录下，可将其部署至任何静态文件服务器（如普通 Nginx、GitHub Pages、Netlify 等）。
+构建产物包括前端 `dist/` 和后端 `dist-server/`。当前版本不能只上传 `dist/` 作为完整应用运行。
 
 </details>
+
+<details>
+<summary><strong>⚠️ 历史静态部署说明</strong></summary>
+
+早期版本是纯前端工具，可以部署到 Vercel、GitHub Pages、Cloudflare Workers 或任意静态文件服务器。当前版本已经依赖后端接口、数据库迁移、登录态、队列和图片文件存储，因此这些方式不再适合作为正式部署方案。
+
+如果仅用于研究旧版前端配置逻辑，仍可执行 `npm run build` 获取 `dist/`；但登录、用户管理、历史记录、队列、后台设置等功能都需要后端服务。
+
+</details>
+
+<details>
+<summary><strong>🧪 本地故障模拟 API (可选)</strong></summary>
+
+如果需要复现图片 URL 跨域、接口返回结构异常、原始响应查看等问题，可启动内置模拟服务：
+
+```bash
+npm run mock:api
+```
+
+使用方式见 [本地故障模拟 API](docs/mock-image-api.md)。
+
+</details>
+
+---
+
+## 🛠️ 管理员初始化
+
+服务启动后会检查数据库中是否已有未删除的管理员账号：
+
+- 如果已存在管理员，`ADMIN_USERNAME`、`ADMIN_EMAIL`、`ADMIN_PASSWORD` 不会覆盖现有账号。
+- 如果不存在管理员，且配置了 `ADMIN_PASSWORD`，系统会创建一个管理员账号，并写入初始钱包。
+- 出于安全考虑，前端不提供创建管理员入口；新增管理员请通过数据库手动调整角色。
+
+首次登录后建议立即修改默认密码，并在管理控制台配置系统名称、注册开关、默认 Credits、默认倍率、队列并发和模型服务。
 
 ---
 
@@ -264,11 +272,7 @@ npm run build
 例如，集成到 New API 的聊天系统：
 
 ```text
-https://gpt-image-playground.cooksleep.dev?apiUrl={address}&apiKey={key}&model={model}
-```
-
-```text
-https://cooksleep.github.io/gpt_image_playground?apiUrl={address}&apiKey={key}&model={model}
+https://your-domain.example?apiUrl={address}&apiKey={key}&model={model}
 ```
 
 **方式二：自定义格式服务商**

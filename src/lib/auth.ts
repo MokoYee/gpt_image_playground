@@ -57,7 +57,7 @@ export interface UsageRecordFilters {
 }
 
 export interface SystemSettings {
-  site: {
+  site?: {
     appName: string
   }
   auth: {
@@ -108,7 +108,7 @@ export interface AuditLog {
 }
 
 export interface PublicSettings {
-  site: {
+  site?: {
     appName: string
   }
   auth: {
@@ -121,7 +121,8 @@ export interface PublicSettings {
 }
 
 export const DEFAULT_APP_NAME = 'GPT Image Playground'
-export const AUTH_SESSION_STORAGE_KEY = 'hua-image-playground.auth-session'
+export const AUTH_SESSION_STORAGE_KEY = 'gpt-image-playground.auth-session'
+const LEGACY_AUTH_SESSION_STORAGE_KEY = 'hua-image-playground.auth-session'
 
 interface AuthSession {
   token: string
@@ -130,7 +131,11 @@ interface AuthSession {
 
 export function readAuthSession(): AuthSession | null {
   try {
-    const saved = window.localStorage.getItem(AUTH_SESSION_STORAGE_KEY)
+    const saved = window.localStorage.getItem(AUTH_SESSION_STORAGE_KEY) ?? window.localStorage.getItem(LEGACY_AUTH_SESSION_STORAGE_KEY)
+    if (saved && !window.localStorage.getItem(AUTH_SESSION_STORAGE_KEY)) {
+      window.localStorage.setItem(AUTH_SESSION_STORAGE_KEY, saved)
+      window.localStorage.removeItem(LEGACY_AUTH_SESSION_STORAGE_KEY)
+    }
     return saved ? JSON.parse(saved) as AuthSession : null
   } catch {
     return null
@@ -139,10 +144,12 @@ export function readAuthSession(): AuthSession | null {
 
 export function writeAuthSession(session: AuthSession) {
   window.localStorage.setItem(AUTH_SESSION_STORAGE_KEY, JSON.stringify(session))
+  window.localStorage.removeItem(LEGACY_AUTH_SESSION_STORAGE_KEY)
 }
 
 export function clearAuthSession() {
   window.localStorage.removeItem(AUTH_SESSION_STORAGE_KEY)
+  window.localStorage.removeItem(LEGACY_AUTH_SESSION_STORAGE_KEY)
 }
 
 export function getAuthToken(): string | null {
