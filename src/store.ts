@@ -129,7 +129,11 @@ async function mapServerTaskToLocalTask(serverTask: ServerImageTask, existing?: 
   const outputImages: string[] = []
   if (serverTask.status === 'done') {
     for (const image of serverTask.outputImages ?? []) {
-      outputImages.push(await cacheServerImage(image.id))
+      try {
+        outputImages.push(await cacheServerImage(image.id))
+      } catch {
+        outputImages.push(serverImageLocalId(image.id))
+      }
     }
   }
   const actualParamsByImage = serverTask.actualParamsByImage
@@ -494,10 +498,11 @@ function maybeOpenSupportPrompt(previousTasks: TaskRecord[], nextTasks: TaskReco
 
 export function getPersistedState(state: AppState) {
   const settings = normalizeSettings(state.settings)
+  const shouldPersistInput = settings.persistInputOnRestart && !readAuthSession()
   return {
     settings,
     params: state.params,
-    ...(settings.persistInputOnRestart
+    ...(shouldPersistInput
       ? {
           prompt: state.prompt,
           inputImages: state.inputImages.map((img) => ({ id: img.id, dataUrl: '' })),
@@ -515,6 +520,7 @@ function mergePersistedState(persistedState: unknown, currentState: AppState): A
 
   const persisted = persistedState as Partial<AppState>
   const settings = normalizeSettings(persisted.settings ?? currentState.settings)
+  const shouldRestoreInput = settings.persistInputOnRestart && !readAuthSession()
   return {
     ...currentState,
     ...persisted,
@@ -522,8 +528,8 @@ function mergePersistedState(persistedState: unknown, currentState: AppState): A
     supportPromptDismissed: Boolean(persisted.supportPromptDismissed),
     supportPromptOpen: Boolean(persisted.supportPromptOpen),
     supportPromptSkippedForImportedData: Boolean(persisted.supportPromptSkippedForImportedData),
-    prompt: settings.persistInputOnRestart && typeof persisted.prompt === 'string' ? persisted.prompt : '',
-    inputImages: settings.persistInputOnRestart && Array.isArray(persisted.inputImages) ? persisted.inputImages : [],
+    prompt: shouldRestoreInput && typeof persisted.prompt === 'string' ? persisted.prompt : '',
+    inputImages: shouldRestoreInput && Array.isArray(persisted.inputImages) ? persisted.inputImages : [],
   }
 }
 
