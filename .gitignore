@@ -5,3 +5,4 @@ dev-proxy.config.json
 .wrangler/
 .history/
 AGENTS.md
+.env.local
