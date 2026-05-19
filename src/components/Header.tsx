@@ -7,6 +7,7 @@ import HelpModal from './HelpModal'
 import type { UserRole } from '../lib/auth'
 
 interface HeaderProps {
+  appName: string
   user?: {
     username: string
     email: string
@@ -17,7 +18,7 @@ interface HeaderProps {
   onOpenAccount?: () => void
 }
 
-export default function Header({ user, onLogout, onOpenConsole, onOpenAccount }: HeaderProps) {
+export default function Header({ appName, user, onLogout, onOpenConsole, onOpenAccount }: HeaderProps) {
   const { hasUpdate, latestRelease, dismiss } = useVersionCheck()
   const [showHelp, setShowHelp] = useState(false)
 
@@ -33,7 +34,7 @@ export default function Header({ user, onLogout, onOpenConsole, onOpenAccount }:
           <div className="flex-1 min-w-0 pr-2">
             <h1 className="inline-flex items-start relative">
               <span className="text-[17px] sm:text-lg font-bold tracking-tight text-gray-800 dark:text-gray-100">
-                Hua Image Playground
+                {appName}
               </span>
               {hasUpdate && latestRelease && (
                 <button
@@ -184,7 +185,7 @@ export default function Header({ user, onLogout, onOpenConsole, onOpenAccount }:
       <div className="safe-area-top invisible pointer-events-none" aria-hidden="true">
         <div className="safe-header-inner" />
       </div>
-      {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
+      {showHelp && <HelpModal appName={appName} onClose={() => setShowHelp(false)} />}
     </>
   )
 }

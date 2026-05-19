@@ -17,6 +17,8 @@ function publicUser(row: any) {
     concurrencyLimit: row.concurrency_limit == null ? null : Number(row.concurrency_limit),
     disabled: row.status !== 'enabled',
     createdAt: new Date(row.created_at).getTime(),
+    lastLoginAt: row.last_login_at ? new Date(row.last_login_at).getTime() : null,
+    lastActiveAt: row.last_active_at ? new Date(row.last_active_at).getTime() : null,
   }
 }
 
@@ -28,7 +30,8 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     }).parse(request.body)
     const result = await app.context.db.query(
       `
-        select u.id::text, u.username, u.email, u.password_hash, u.role, u.status, w.credits, w.multiplier, w.concurrency_limit, u.created_at
+        select u.id::text, u.username, u.email, u.password_hash, u.role, u.status, u.last_login_at, u.last_active_at,
+               w.credits, w.multiplier, w.concurrency_limit, u.created_at
         from users u
         join user_wallets w on w.user_id = u.id
         where (lower(u.username) = lower($1) or lower(u.email) = lower($1))
@@ -39,6 +42,9 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     const user = result.rows[0]
     if (!user || !await verifyPassword(body.password, user.password_hash)) throw unauthorized('账号或密码不正确')
     if (user.status !== 'enabled') throw forbidden('该账号已被禁用')
+    await app.context.db.query('update users set last_login_at = now(), last_active_at = now(), updated_at = now() where id = $1', [user.id])
+    user.last_login_at = new Date()
+    user.last_active_at = new Date()
     const token = await signToken(app.context.config.JWT_SECRET, app.context.config.JWT_EXPIRES_IN_SECONDS, user)
     return { token, user: publicUser(user) }
   })
@@ -80,7 +86,8 @@ export async function registerAuthRoutes(app: FastifyInstance) {
   app.get('/api/auth/me', { preHandler: requireAuth }, async (request) => {
     const result = await app.context.db.query(
       `
-        select u.id::text, u.username, u.email, u.role, u.status, w.credits, w.multiplier, w.concurrency_limit, u.created_at
+        select u.id::text, u.username, u.email, u.role, u.status, u.last_login_at, u.last_active_at,
+               w.credits, w.multiplier, w.concurrency_limit, u.created_at
         from users u join user_wallets w on w.user_id = u.id
         where u.id = $1
       `,

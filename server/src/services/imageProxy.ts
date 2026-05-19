@@ -108,7 +108,7 @@ async function parseResponsesApiResponse(payload: any, mime: string): Promise<Im
 }
 
 export async function callImageProvider(settings: ImageApiSettings, request: ImageProxyRequest): Promise<ImageProxyResult> {
-  if (!settings.apiKey) throw new Error('管理员尚未配置上游 API Key')
+  if (!settings.apiKey) throw new Error('管理员尚未配置模型服务 API Key')
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), settings.timeoutSeconds * 1000)
   const mime = MIME_MAP[request.params.output_format] || 'image/png'

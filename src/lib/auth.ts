@@ -6,12 +6,16 @@ export interface AppUser {
   id: string
   username: string
   email: string
+  note: string
   role: UserRole
   credits: number
   multiplier: number
   concurrencyLimit?: number | null
   disabled: boolean
   createdAt: number
+  lastLoginAt?: number | null
+  lastActiveAt?: number | null
+  lastUsedAt?: number | null
 }
 
 export interface CreditRecord {
@@ -53,6 +57,9 @@ export interface UsageRecordFilters {
 }
 
 export interface SystemSettings {
+  site: {
+    appName: string
+  }
   auth: {
     registrationOpen: boolean
     defaultCredits: number
@@ -67,20 +74,13 @@ export interface SystemSettings {
       endpoint?: string
     }
   }
-  imageApi: {
-    provider: 'openai-compatible'
-    baseUrl: string
-    apiKey?: string
-    model: string
-    apiMode: 'images' | 'responses'
-    timeoutSeconds: number
-  }
   queue: {
     globalConcurrency: number
     defaultUserConcurrency: number
     maxQueueSize: number
   }
   models: ModelProfile[]
+  defaultModel?: ModelProfile
 }
 
 export interface ModelProfile {
@@ -108,6 +108,9 @@ export interface AuditLog {
 }
 
 export interface PublicSettings {
+  site: {
+    appName: string
+  }
   auth: {
     registrationOpen: boolean
   }
@@ -117,6 +120,7 @@ export interface PublicSettings {
   }
 }
 
+export const DEFAULT_APP_NAME = 'GPT Image Playground'
 export const AUTH_SESSION_STORAGE_KEY = 'hua-image-playground.auth-session'
 
 interface AuthSession {
@@ -222,7 +226,7 @@ export async function listUsers(): Promise<AppUser[]> {
   return result.items
 }
 
-export async function createUser(input: Pick<AppUser, 'username' | 'email' | 'role'> & { password: string; credits?: number; multiplier?: number; concurrencyLimit?: number | null }): Promise<{ user: AppUser | null; error: string | null }> {
+export async function createUser(input: Pick<AppUser, 'username' | 'email'> & { password: string; credits?: number; multiplier?: number; concurrencyLimit?: number | null }): Promise<{ user: AppUser | null; error: string | null }> {
   try {
     const result = await requestApi<{ user: AppUser }>('/api/admin/users', {
       method: 'POST',
@@ -234,7 +238,7 @@ export async function createUser(input: Pick<AppUser, 'username' | 'email' | 'ro
   }
 }
 
-export async function updateUser(userId: string, patch: Partial<Pick<AppUser, 'role' | 'disabled' | 'multiplier' | 'concurrencyLimit'>>): Promise<AppUser | null> {
+export async function updateUser(userId: string, patch: Partial<Pick<AppUser, 'disabled' | 'note' | 'multiplier' | 'concurrencyLimit'>> & { password?: string }): Promise<AppUser | null> {
   const result = await requestApi<{ user: AppUser }>(`/api/admin/users/${userId}`, {
     method: 'PATCH',
     body: JSON.stringify(patch),
@@ -282,8 +286,8 @@ export async function updateAuthSettings(input: SystemSettings['auth']): Promise
   return result.settings
 }
 
-export async function updateImageApiSettings(input: SystemSettings['imageApi']): Promise<SystemSettings> {
-  const result = await requestApi<{ settings: SystemSettings }>('/api/admin/settings/image-api', {
+export async function updateSiteSettings(input: SystemSettings['site']): Promise<SystemSettings> {
+  const result = await requestApi<{ settings: SystemSettings }>('/api/admin/settings/site', {
     method: 'PUT',
     body: JSON.stringify(input),
   })

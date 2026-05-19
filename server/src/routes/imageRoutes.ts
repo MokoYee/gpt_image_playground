@@ -145,6 +145,8 @@ async function authorizeImageFile(app: FastifyInstance, request: FastifyRequest,
 
 async function createQueuedTask(app: FastifyInstance, userId: string, body: z.infer<typeof GenerateSchema>) {
   const settings = await readSystemSettings(app.context.db)
+  if (!settings.defaultModel) throw badRequest('管理员尚未配置启用的默认模型服务')
+  const defaultModel = settings.defaultModel
   if (body.localTaskId) {
     const existing = await app.context.db.query<{ id: string; status: string }>(
       'select id::text, status from image_tasks where user_id = $1 and local_task_id = $2',
@@ -197,8 +199,8 @@ async function createQueuedTask(app: FastifyInstance, userId: string, body: z.in
         body.localTaskId ?? null,
         body.prompt,
         JSON.stringify(body.params),
-        settings.imageApi.provider,
-        settings.imageApi.model,
+        defaultModel.provider,
+        defaultModel.model,
         lockedEstimatedCredits,
         body.params.n,
       ],
@@ -215,6 +217,7 @@ async function createQueuedTask(app: FastifyInstance, userId: string, body: z.in
       'update user_wallets set credits = credits - $1, updated_at = now(), version = version + 1 where user_id = $2',
       [lockedEstimatedCredits, userId],
     )
+    await client.query('update users set last_active_at = now(), updated_at = now() where id = $1', [userId])
     for (const dataUrl of body.inputImageDataUrls) {
       await storeImageFile(client, {
         userId,

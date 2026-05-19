@@ -16,6 +16,7 @@ function formatTime(value: number) {
 export default function AccountPage({ user, onClose, onUserChange }: AccountPageProps) {
   const [oldPassword, setOldPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [message, setMessage] = useState<string | null>(null)
   const [usageRecords, setUsageRecords] = useState<UsageRecord[]>([])
   const [currentUser, setCurrentUser] = useState(user)
@@ -43,8 +44,12 @@ export default function AccountPage({ user, onClose, onUserChange }: AccountPage
   }, [])
 
   const changePassword = async () => {
-    if (newPassword.length < 8 || !/[A-Za-z]/.test(newPassword) || !/\d/.test(newPassword)) {
-      setMessage('新密码至少 8 位，并包含字母和数字')
+    if (newPassword.length < 8 || newPassword.length > 72 || !/[A-Za-z]/.test(newPassword) || !/\d/.test(newPassword) || /\s/.test(newPassword)) {
+      setMessage('新密码需为 8-72 位，包含字母和数字，且不能包含空格')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setMessage('两次输入的新密码不一致')
       return
     }
     try {
@@ -52,6 +57,7 @@ export default function AccountPage({ user, onClose, onUserChange }: AccountPage
       onUserChange(currentUser)
       setOldPassword('')
       setNewPassword('')
+      setConfirmPassword('')
       setMessage('密码已修改')
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '密码修改失败')
@@ -85,6 +91,7 @@ export default function AccountPage({ user, onClose, onUserChange }: AccountPage
           <div className="mt-3 grid gap-3">
             <input value={oldPassword} onChange={(event) => setOldPassword(event.target.value)} type="password" placeholder="原密码" className="rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 text-sm outline-none focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03]" />
             <input value={newPassword} onChange={(event) => setNewPassword(event.target.value)} type="password" placeholder="新密码" className="rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 text-sm outline-none focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03]" />
+            <input value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} type="password" placeholder="确认新密码" className="rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 text-sm outline-none focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03]" />
             {message && <div className="rounded-xl bg-gray-100 px-3 py-2 text-xs text-gray-600 dark:bg-white/[0.08] dark:text-gray-300">{message}</div>}
             <button onClick={changePassword} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700">保存密码</button>
           </div>

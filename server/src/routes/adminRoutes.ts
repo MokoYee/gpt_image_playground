@@ -7,19 +7,21 @@ import { withTransaction } from '../db.js'
 import { readSystemSettings } from '../services/settings.js'
 import { writeAuditLog } from '../services/audit.js'
 
-const RoleSchema = z.enum(['user', 'admin'])
-
 function mapUser(row: any) {
   return {
     id: row.id,
     username: row.username,
     email: row.email,
+    note: row.note ?? '',
     role: row.role,
     credits: Number(row.credits ?? 0),
     multiplier: Number(row.multiplier ?? 1),
     concurrencyLimit: row.concurrency_limit == null ? null : Number(row.concurrency_limit),
     disabled: row.status !== 'enabled',
     createdAt: new Date(row.created_at).getTime(),
+    lastLoginAt: row.last_login_at ? new Date(row.last_login_at).getTime() : null,
+    lastActiveAt: row.last_active_at ? new Date(row.last_active_at).getTime() : null,
+    lastUsedAt: row.last_used_at ? new Date(row.last_used_at).getTime() : null,
   }
 }
 
@@ -38,10 +40,16 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     params.push(query.pageSize, toOffset(query.page, query.pageSize))
     const result = await app.context.db.query(
       `
-        select u.id::text, u.username, u.email, u.role, u.status, u.created_at, w.credits, w.multiplier, w.concurrency_limit,
+        select u.id::text, u.username, u.email, u.note, u.role, u.status, u.created_at, u.last_login_at, u.last_active_at,
+               last_usage.last_used_at, w.credits, w.multiplier, w.concurrency_limit,
                count(*) over() as total
         from users u
         join user_wallets w on w.user_id = u.id
+        left join lateral (
+          select max(ur.created_at) as last_used_at
+          from usage_records ur
+          where ur.user_id = u.id
+        ) last_usage on true
         where ${where.join(' and ')}
         order by u.created_at desc
         limit $${params.length - 1} offset $${params.length}
@@ -61,7 +69,6 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       username: UsernameSchema,
       email: EmailSchema,
       password: PasswordSchema,
-      role: RoleSchema.default('user'),
       credits: z.coerce.number().min(0).optional(),
       multiplier: z.coerce.number().min(0).optional(),
       concurrencyLimit: z.coerce.number().int().min(1).optional().nullable(),
@@ -82,7 +89,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
           values ($1, $2, $3, $4)
           returning id::text, username, email, role, status, created_at
         `,
-        [body.username, body.email, passwordHash, body.role],
+        [body.username, body.email, passwordHash, 'user'],
       )
       await client.query(
         'insert into user_wallets (user_id, credits, multiplier, concurrency_limit) values ($1, $2, $3, $4)',
@@ -97,23 +104,30 @@ export async function registerAdminRoutes(app: FastifyInstance) {
   app.patch('/api/admin/users/:userId', { preHandler: requireAdmin }, async (request) => {
     const params = z.object({ userId: z.string().uuid() }).parse(request.params)
     const body = z.object({
-      role: RoleSchema.optional(),
       disabled: z.boolean().optional(),
+      note: z.string().trim().max(500).optional(),
       multiplier: z.coerce.number().min(0).optional(),
       concurrencyLimit: z.coerce.number().int().min(1).optional().nullable(),
+      password: PasswordSchema.optional(),
     }).parse(request.body)
+    const passwordHash = body.password ? await hashPassword(body.password) : null
     const user = await withTransaction(app.context.db, async (client) => {
-      if (body.role || body.disabled !== undefined) {
+      if (body.disabled !== undefined) {
         await client.query(
           `
             update users
-            set role = coalesce($1, role),
-                status = coalesce($2, status),
+            set status = $1,
                 updated_at = now()
-            where id = $3 and status <> 'deleted'
+            where id = $2 and status <> 'deleted'
           `,
-          [body.role ?? null, body.disabled === undefined ? null : body.disabled ? 'disabled' : 'enabled', params.userId],
+          [body.disabled ? 'disabled' : 'enabled', params.userId],
         )
+      }
+      if (body.note !== undefined) {
+        await client.query('update users set note = $1, updated_at = now() where id = $2 and status <> $3', [body.note, params.userId, 'deleted'])
+      }
+      if (passwordHash) {
+        await client.query('update users set password_hash = $1, updated_at = now() where id = $2 and status <> $3', [passwordHash, params.userId, 'deleted'])
       }
       if (body.multiplier !== undefined) {
         await client.query('update user_wallets set multiplier = $1, updated_at = now(), version = version + 1 where user_id = $2', [body.multiplier, params.userId])
@@ -123,8 +137,14 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       }
       const result = await client.query(
         `
-          select u.id::text, u.username, u.email, u.role, u.status, u.created_at, w.credits, w.multiplier, w.concurrency_limit
+          select u.id::text, u.username, u.email, u.note, u.role, u.status, u.created_at, u.last_login_at, u.last_active_at,
+                 last_usage.last_used_at, w.credits, w.multiplier, w.concurrency_limit
           from users u join user_wallets w on w.user_id = u.id
+          left join lateral (
+            select max(ur.created_at) as last_used_at
+            from usage_records ur
+            where ur.user_id = u.id
+          ) last_usage on true
           where u.id = $1 and u.status <> 'deleted'
         `,
         [params.userId],
@@ -133,10 +153,11 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       return result.rows[0]
     })
     await writeAuditLog(app.context.db, request.user, 'admin.user.update', 'user', params.userId, {
-      role: body.role,
       disabled: body.disabled,
+      noteUpdated: body.note !== undefined,
       multiplier: body.multiplier,
       concurrencyLimit: body.concurrencyLimit,
+      passwordReset: Boolean(passwordHash),
     })
     return { user: mapUser(user) }
   })
@@ -172,8 +193,14 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       )
       const result = await client.query(
         `
-          select u.id::text, u.username, u.email, u.role, u.status, u.created_at, w.credits, w.multiplier, w.concurrency_limit
+          select u.id::text, u.username, u.email, u.note, u.role, u.status, u.created_at, u.last_login_at, u.last_active_at,
+                 last_usage.last_used_at, w.credits, w.multiplier, w.concurrency_limit
           from users u join user_wallets w on w.user_id = u.id
+          left join lateral (
+            select max(ur.created_at) as last_used_at
+            from usage_records ur
+            where ur.user_id = u.id
+          ) last_usage on true
           where u.id = $1
         `,
         [params.userId],

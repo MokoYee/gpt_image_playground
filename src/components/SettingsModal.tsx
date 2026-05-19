@@ -24,6 +24,7 @@ import type { ApiProfile, AppSettings, CustomProviderDefinition } from '../types
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape'
 import { usePreventBackgroundScroll } from '../hooks/usePreventBackgroundScroll'
 import { DEFAULT_DROPDOWN_MAX_HEIGHT, getDropdownMaxHeight } from '../lib/dropdown'
+import { DEFAULT_APP_NAME, readPublicSettings } from '../lib/auth'
 import Select from './Select'
 import { Checkbox } from './Checkbox'
 import ViewportTooltip from './ViewportTooltip'
@@ -273,6 +274,7 @@ export default function SettingsModal() {
   const setReusedTaskApiProfile = useStore((s) => s.setReusedTaskApiProfile)
   const setConfirmDialog = useStore((s) => s.setConfirmDialog)
   const showToast = useStore((s) => s.showToast)
+  const [appName, setAppName] = useState(DEFAULT_APP_NAME)
   const importInputRef = useRef<HTMLInputElement>(null)
   const profileMenuRef = useRef<HTMLDivElement>(null)
   const profileMenuTriggerRef = useRef<HTMLButtonElement>(null)
@@ -320,6 +322,12 @@ export default function SettingsModal() {
   const profileTouchDragRef = useRef<{ id: string, startX: number, startY: number, moved: boolean } | null>(null)
   const [copyImportUrlProfile, setCopyImportUrlProfile] = useState<ApiProfile | null>(null)
   const [copyImportUrlOptions, setCopyImportUrlOptions] = useState<CopyImportUrlOptions>(readCopyImportUrlOptions)
+
+  useEffect(() => {
+    void readPublicSettings()
+      .then((settings) => setAppName(settings.site.appName || DEFAULT_APP_NAME))
+      .catch(() => setAppName(DEFAULT_APP_NAME))
+  }, [])
 
   const apiProxyConfig = readClientDevProxyConfig()
   const apiProxyAvailable = isApiProxyAvailable(apiProxyConfig)
@@ -1695,9 +1703,9 @@ export default function SettingsModal() {
               <div className="flex h-full min-h-[300px] flex-col items-center justify-center pb-8 px-6">
                 <div className="flex flex-col items-center">
                   <div className="mb-5 flex h-[88px] w-[88px] items-center justify-center rounded-full border border-gray-200/80 bg-gray-50/50 text-3xl font-black text-gray-800 dark:border-white/[0.08] dark:bg-white/[0.02] dark:text-gray-100">
-                    H
+                    {(appName.trim() || DEFAULT_APP_NAME).slice(0, 1).toUpperCase()}
                   </div>
-                  <h4 className="text-[17px] font-bold text-gray-800 dark:text-gray-100">Hua Image Playground</h4>
+                  <h4 className="text-[17px] font-bold text-gray-800 dark:text-gray-100">{appName}</h4>
                   <p className="mt-1.5 text-[13px] text-gray-500 dark:text-gray-400">
                     图像生成工作台
                   </p>

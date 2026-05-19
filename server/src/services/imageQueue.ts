@@ -154,10 +154,12 @@ export class ImageQueueWorker {
     const startedAt = Date.now()
     try {
       const settings = await readSystemSettings(this.pool)
+      const modelProfile = settings.defaultModel
+      if (!modelProfile) throw new Error('管理员尚未配置启用的默认模型服务')
       const inputImages = await this.readTaskImages(task.id, 'upload')
       const maskImages = await this.readTaskImages(task.id, 'mask')
 
-      const providerResult = await callImageProvider(settings.imageApi, {
+      const providerResult = await callImageProvider(modelProfile, {
         prompt: task.prompt,
         params: task.params,
         inputImageDataUrls: inputImages,
@@ -209,6 +211,7 @@ export class ImageQueueWorker {
           `,
           [task.user_id, task.id, task.prompt, task.params.quality, actualImageCount, baseCredits(task.params.quality), multiplier, totalCredits],
         )
+        await client.query('update users set last_active_at = now(), updated_at = now() where id = $1', [task.user_id])
         await client.query(
           `
             update image_tasks
