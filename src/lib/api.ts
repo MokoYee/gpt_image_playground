@@ -46,10 +46,11 @@ export interface ServerImageTask {
 
 async function authedJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getAuthToken()
+  const hasBody = init.body !== undefined && init.body !== null
   const response = await fetch(path, {
     ...init,
     headers: {
-      ...(init.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
+      ...(hasBody && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...init.headers,
     },

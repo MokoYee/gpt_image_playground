@@ -1639,6 +1639,11 @@ function getDeletionErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error || '删除失败')
 }
 
+function isAlreadyRemovedServerTaskError(error: unknown): boolean {
+  const message = getDeletionErrorMessage(error)
+  return message.includes('任务不存在') || message.includes('HTTP 404')
+}
+
 async function deleteServerTaskForRemoval(task: TaskRecord) {
   if (!task.serverTaskId || !readAuthSession()) return
   if (task.status === 'running') {
@@ -1647,7 +1652,12 @@ async function deleteServerTaskForRemoval(task: TaskRecord) {
   if (task.status === 'queued') {
     await cancelImageTask(task.serverTaskId)
   }
-  await deleteImageTask(task.serverTaskId)
+  try {
+    await deleteImageTask(task.serverTaskId)
+  } catch (error) {
+    if (task.status !== 'queued' && isAlreadyRemovedServerTaskError(error)) return
+    throw error
+  }
 }
 
 async function removeLocalTasks(taskIds: string[]) {

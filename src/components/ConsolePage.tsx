@@ -41,6 +41,8 @@ import {
 import type { AppUser, AuditLog, CreditRecord, ModelProfile, SystemSettings, UsageRecord, UsageRecordFilters } from '../lib/auth'
 import { createProtectedImageLink, fetchProtectedImageDataUrl } from '../lib/api'
 import { copyTextToClipboard, getClipboardFailureMessage } from '../lib/clipboard'
+import { useStore } from '../store'
+import Lightbox from './Lightbox'
 
 interface ConsolePageProps {
   currentUser: AppUser
@@ -340,6 +342,10 @@ function ProtectedImage({ fileId }: { fileId: string }) {
   return <img src={src} className="block h-full w-full object-cover" alt="" />
 }
 
+function toServerLightboxImageId(fileId: string) {
+  return `server:${fileId}`
+}
+
 function generatePassword() {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
   const bytes = new Uint8Array(12)
@@ -364,10 +370,12 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
   const [creditForm, setCreditForm] = useState(EMPTY_CREDIT_FORM)
   const [usageFilters, setUsageFilters] = useState(EMPTY_USAGE_FILTERS)
   const [error, setError] = useState<string | null>(null)
+  const [dialogError, setDialogError] = useState<string | null>(null)
   const [form, setForm] = useState(EMPTY_CREATE_USER_FORM)
   const [isDarkMode, setIsDarkMode] = useState(() => window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false)
   const [messageApi, messageContextHolder] = message.useMessage()
   const [modalApi, modalContextHolder] = Modal.useModal()
+  const setLightboxImageId = useStore((state) => state.setLightboxImageId)
 
   const totals = useMemo(() => ({
     users: users.length,
@@ -450,24 +458,24 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
   }
 
   const handleCreateUser = async () => {
-    setError(null)
+    setDialogError(null)
     const credits = Number(form.credits)
     const multiplier = Number(form.multiplier)
     const concurrencyLimit = form.concurrencyLimit.trim() ? Number(form.concurrencyLimit) : null
     if (!form.username.trim() || !form.email.trim() || !form.password.trim()) {
-      setError('请填写用户名、邮箱和密码')
+      setDialogError('请填写用户名、邮箱和密码')
       return
     }
     if (!Number.isFinite(credits) || credits < 0) {
-      setError('用户额度必须是非负数字')
+      setDialogError('用户额度必须是非负数字')
       return
     }
     if (!Number.isFinite(multiplier) || multiplier < 0) {
-      setError('专属倍率必须是非负数字，允许填写 0.2 这类小数')
+      setDialogError('专属倍率必须是非负数字，允许填写 0.2 这类小数')
       return
     }
     if (concurrencyLimit !== null && (!Number.isInteger(concurrencyLimit) || concurrencyLimit <= 0)) {
-      setError('专属并发必须是大于 0 的整数')
+      setDialogError('专属并发必须是大于 0 的整数')
       return
     }
     const result = await createUser({
@@ -479,7 +487,7 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
       concurrencyLimit,
     })
     if (!result.user) {
-      setError(result.error)
+      setDialogError(result.error)
       return
     }
     setForm({
@@ -489,12 +497,13 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
       concurrencyLimit: '',
     })
     setShowCreateUser(false)
+    setDialogError(null)
     await refresh()
     messageApi.success('用户已创建')
   }
 
   const openEditUser = (user: AppUser) => {
-    setError(null)
+    setDialogError(null)
     setEditingUser(user)
     setEditUserForm({
       multiplier: String(user.multiplier),
@@ -507,37 +516,42 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
 
   const saveEditingUser = async () => {
     if (!editingUser) return
-    setError(null)
+    setDialogError(null)
     const isEditingAdmin = editingUser.role === 'admin'
     const multiplier = Number(editUserForm.multiplier)
     const concurrencyLimit = editUserForm.concurrencyLimit.trim() ? Number(editUserForm.concurrencyLimit) : null
     if (!Number.isFinite(multiplier) || multiplier < 0) {
-      setError('专属倍率必须是非负数字，允许填写 0.2 这类小数')
+      setDialogError('专属倍率必须是非负数字，允许填写 0.2 这类小数')
       return
     }
     if (concurrencyLimit !== null && (!Number.isInteger(concurrencyLimit) || concurrencyLimit <= 0)) {
-      setError('专属并发必须是大于 0 的整数')
+      setDialogError('专属并发必须是大于 0 的整数')
       return
     }
     const password = editUserForm.password
     if (password && (password.length < 6 || password.length > 72)) {
-      setError('新密码需为 6-72 位')
+      setDialogError('新密码需为 6-72 位')
       return
     }
-    await updateUser(editingUser.id, {
-      multiplier,
-      concurrencyLimit,
-      note: editUserForm.note.trim(),
-      disabled: isEditingAdmin ? editingUser.disabled : editUserForm.disabled,
-      ...(password ? { password } : {}),
-    })
-    setEditingUser(null)
-    await refresh()
-    messageApi.success('用户配置已保存')
+    try {
+      await updateUser(editingUser.id, {
+        multiplier,
+        concurrencyLimit,
+        note: editUserForm.note.trim(),
+        disabled: isEditingAdmin ? editingUser.disabled : editUserForm.disabled,
+        ...(password ? { password } : {}),
+      })
+      setEditingUser(null)
+      setDialogError(null)
+      await refresh()
+      messageApi.success('用户配置已保存')
+    } catch (error) {
+      setDialogError(error instanceof Error ? error.message : '用户配置保存失败')
+    }
   }
 
   const openCreditDialog = (user: AppUser, type: 'recharge' | 'refund') => {
-    setError(null)
+    setDialogError(null)
     setCreditTarget({ user, type })
     setCreditForm(EMPTY_CREDIT_FORM)
   }
@@ -569,16 +583,21 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
 
   const submitCreditDialog = async () => {
     if (!creditTarget) return
-    setError(null)
+    setDialogError(null)
     const value = Number(creditForm.amount)
     if (!Number.isFinite(value) || value <= 0) {
-      setError('请输入大于 0 的金额')
+      setDialogError('请输入大于 0 的金额')
       return
     }
-    await adjustUserCredits(creditTarget.user.id, value, creditTarget.type, creditForm.note.trim())
-    setCreditTarget(null)
-    await refresh()
-    messageApi.success(creditTarget.type === 'recharge' ? '充值已完成' : '退款已完成')
+    try {
+      await adjustUserCredits(creditTarget.user.id, value, creditTarget.type, creditForm.note.trim())
+      setCreditTarget(null)
+      setDialogError(null)
+      await refresh()
+      messageApi.success(creditTarget.type === 'recharge' ? '充值已完成' : '退款已完成')
+    } catch (error) {
+      setDialogError(error instanceof Error ? error.message : '额度操作失败')
+    }
   }
 
   const saveSiteSettings = async () => {
@@ -858,6 +877,10 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
       render: (_, record) => {
         const images = record.imageFiles ?? []
         const previewImages = images.slice(0, 4)
+        const lightboxImageList = images.map((image) => toServerLightboxImageId(image.id))
+        const openImagePreview = (fileId: string) => {
+          setLightboxImageId(toServerLightboxImageId(fileId), lightboxImageList)
+        }
         if (previewImages.length === 0) {
           return (
             <div className="flex h-16 w-24 items-center justify-center rounded-lg bg-gray-100 text-xs text-gray-400 dark:bg-black/20">
@@ -867,17 +890,30 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
         }
         if (previewImages.length === 1) {
           return (
-            <div className="h-16 w-24 overflow-hidden rounded-lg bg-gray-100 dark:bg-black/20">
+            <button
+              type="button"
+              className="block h-16 w-24 cursor-pointer overflow-hidden rounded-lg border-0 bg-gray-100 p-0 text-left transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 dark:bg-black/20"
+              onClick={() => openImagePreview(previewImages[0].id)}
+              title="点击预览"
+              aria-label="预览图片"
+            >
               <ProtectedImage fileId={previewImages[0].id} />
-            </div>
+            </button>
           )
         }
         return (
           <div className="grid h-16 w-24 grid-cols-2 gap-1 overflow-hidden rounded-lg bg-gray-100 dark:bg-black/20">
             {previewImages.map((image, index) => (
-              <div key={image.id} className={previewImages.length === 3 && index === 2 ? 'col-span-2 overflow-hidden' : 'overflow-hidden'}>
+              <button
+                key={image.id}
+                type="button"
+                className={`${previewImages.length === 3 && index === 2 ? 'col-span-2 ' : ''}h-full w-full cursor-pointer overflow-hidden rounded-[6px] border-0 p-0 transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50`}
+                onClick={() => openImagePreview(image.id)}
+                title="点击预览"
+                aria-label={`预览第 ${index + 1} 张图片`}
+              >
                 <ProtectedImage fileId={image.id} />
-              </div>
+              </button>
             ))}
           </div>
         )
@@ -1092,7 +1128,16 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
           <section className="min-w-0 overflow-hidden rounded-xl border border-gray-200/70 bg-white shadow-sm dark:border-white/[0.08] dark:bg-gray-900">
             {tab === 'users' && (
               <div className="flex justify-end border-b border-gray-200/70 px-5 py-4 dark:border-white/[0.08]">
-                <Button type="primary" icon={<UserAddOutlined />} onClick={() => setShowCreateUser(true)}>创建用户</Button>
+                <Button
+                  type="primary"
+                  icon={<UserAddOutlined />}
+                  onClick={() => {
+                    setDialogError(null)
+                    setShowCreateUser(true)
+                  }}
+                >
+                  创建用户
+                </Button>
               </div>
             )}
 
@@ -1104,7 +1149,7 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
 
             {error && (
               <div className="mx-5 mt-4">
-                <Alert type="error" showIcon message={error} />
+                <Alert type="error" showIcon title={error} />
               </div>
             )}
 
@@ -1382,9 +1427,20 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
           className="console-modal"
           open={showCreateUser}
           title="创建用户"
-          onCancel={() => setShowCreateUser(false)}
+          onCancel={() => {
+            setDialogError(null)
+            setShowCreateUser(false)
+          }}
           footer={[
-            <Button key="cancel" onClick={() => setShowCreateUser(false)}>取消</Button>,
+            <Button
+              key="cancel"
+              onClick={() => {
+                setDialogError(null)
+                setShowCreateUser(false)
+              }}
+            >
+              取消
+            </Button>,
             <Button key="submit" type="primary" onClick={handleCreateUser}>创建</Button>,
           ]}
         >
@@ -1400,9 +1456,9 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
               <Form.Item label="密码">
                 <Input value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} placeholder="密码，至少 6 位" />
               </Form.Item>
-              <Form.Item label=" " colon={false}>
-                <Button onClick={() => setForm((draft) => ({ ...draft, password: generatePassword() }))}>随机生成</Button>
-              </Form.Item>
+              <div className="flex mb-[12px]">
+                <Button className="w-full sm:w-auto" onClick={() => setForm((draft) => ({ ...draft, password: generatePassword() }))}>随机生成</Button>
+              </div>
             </div>
             <div className="grid grid-cols-3 gap-2">
               <Form.Item label="Credits">
@@ -1415,7 +1471,7 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
                 <Input value={form.concurrencyLimit} onChange={(event) => setForm({ ...form, concurrencyLimit: event.target.value })} placeholder="留空使用默认" />
               </Form.Item>
             </div>
-            {error && <Alert type="error" showIcon message={error} />}
+            {dialogError && <Alert type="error" showIcon title={dialogError} />}
           </Form>
         </Modal>
 
@@ -1423,9 +1479,20 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
           className="console-modal"
           open={Boolean(editingUser)}
           title="编辑用户配置"
-          onCancel={() => setEditingUser(null)}
+          onCancel={() => {
+            setDialogError(null)
+            setEditingUser(null)
+          }}
           footer={[
-            <Button key="cancel" onClick={() => setEditingUser(null)}>取消</Button>,
+            <Button
+              key="cancel"
+              onClick={() => {
+                setDialogError(null)
+                setEditingUser(null)
+              }}
+            >
+              取消
+            </Button>,
             <Button key="submit" type="primary" onClick={saveEditingUser}>保存</Button>,
           ]}
         >
@@ -1448,9 +1515,9 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
                   <Form.Item label="重置密码">
                     <Input value={editUserForm.password} onChange={(event) => setEditUserForm({ ...editUserForm, password: event.target.value })} placeholder="留空不修改密码" />
                   </Form.Item>
-                  <Form.Item label=" " colon={false}>
-                    <Button onClick={() => setEditUserForm((draft) => ({ ...draft, password: generatePassword() }))}>随机生成</Button>
-                  </Form.Item>
+                  <div className="flex sm:pt-6">
+                    <Button className="w-full sm:w-auto" onClick={() => setEditUserForm((draft) => ({ ...draft, password: generatePassword() }))}>随机生成</Button>
+                  </div>
                 </div>
                 {editingUser.role !== 'admin' && (
                   <Form.Item label="账号状态">
@@ -1462,7 +1529,7 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
                     />
                   </Form.Item>
                 )}
-                {error && <Alert type="error" showIcon message={error} />}
+                {dialogError && <Alert type="error" showIcon title={dialogError} />}
               </Form>
             </>
           )}
@@ -1472,9 +1539,20 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
           className="console-modal"
           open={Boolean(creditTarget)}
           title={creditTarget?.type === 'recharge' ? '充值' : '退款'}
-          onCancel={() => setCreditTarget(null)}
+          onCancel={() => {
+            setDialogError(null)
+            setCreditTarget(null)
+          }}
           footer={[
-            <Button key="cancel" onClick={() => setCreditTarget(null)}>取消</Button>,
+            <Button
+              key="cancel"
+              onClick={() => {
+                setDialogError(null)
+                setCreditTarget(null)
+              }}
+            >
+              取消
+            </Button>,
             <Button key="submit" type="primary" danger={creditTarget?.type === 'refund'} onClick={submitCreditDialog}>确认</Button>,
           ]}
         >
@@ -1507,10 +1585,11 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
               <Form.Item label="备注">
                 <Input.TextArea value={creditForm.note} onChange={(event) => setCreditForm((draft) => ({ ...draft, note: event.target.value }))} rows={3} maxLength={500} placeholder="填写本次操作备注" />
               </Form.Item>
-              {error && <Alert type="error" showIcon message={error} />}
+              {dialogError && <Alert type="error" showIcon title={dialogError} />}
             </Form>
           )}
         </Modal>
+        <Lightbox />
       </main>
     </ConfigProvider>
   )
