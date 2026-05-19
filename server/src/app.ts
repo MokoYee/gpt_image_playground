@@ -60,6 +60,7 @@ export async function createApp(context: AppContext) {
   await app.register(staticPlugin, {
     root: publicDir,
     prefix: '/',
+    cacheControl: false,
     setHeaders: (response, filePath) => {
       if (filePath.endsWith('index.html') || filePath.endsWith('sw.js')) {
         response.setHeader('Cache-Control', 'no-store')
