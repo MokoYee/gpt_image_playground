@@ -6,7 +6,11 @@ RUN npm ci
 FROM deps AS build
 COPY . .
 RUN npm run build
-RUN npm prune --omit=dev
+
+FROM node:22-alpine AS prod-deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
 
 FROM node:22-alpine AS runtime
 WORKDIR /app
@@ -16,8 +20,8 @@ ENV SERVER_PORT=8080
 ENV IMAGE_STORAGE_PATH=/data/images
 
 RUN addgroup -S app && adduser -S app -G app
-COPY --from=build --chown=app:app /app/package.json /app/package-lock.json ./
-COPY --from=build --chown=app:app /app/node_modules ./node_modules
+COPY --from=prod-deps --chown=app:app /app/package.json /app/package-lock.json ./
+COPY --from=prod-deps --chown=app:app /app/node_modules ./node_modules
 COPY --from=build --chown=app:app /app/dist ./dist
 COPY --from=build --chown=app:app /app/dist-server ./dist-server
 COPY --from=build --chown=app:app /app/server/migrations ./server/migrations
