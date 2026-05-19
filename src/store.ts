@@ -269,6 +269,13 @@ export async function syncServerHistory() {
   await markOrphanedServerTasksFailed(serverTasks)
 }
 
+export function resetAuthenticatedDraft() {
+  if (!readAuthSession()) return
+  const { inputImages } = useStore.getState()
+  for (const img of inputImages) imageCache.delete(img.id)
+  useStore.setState({ prompt: '', inputImages: [], maskDraft: null, maskEditorImageId: null })
+}
+
 export async function cancelQueuedTask(task: TaskRecord) {
   if (!task.serverTaskId) return
   await cancelImageTask(task.serverTaskId)
@@ -1134,7 +1141,9 @@ export async function initStore() {
   const { tasks, interruptedTasks } = markInterruptedOpenAIRunningTasks(storedTasks)
   await Promise.all(interruptedTasks.map((task) => putTask(task)))
   useStore.getState().setTasks(tasks)
-  if (readAuthSession()) {
+  const hasAuthSession = Boolean(readAuthSession())
+  if (hasAuthSession) {
+    resetAuthenticatedDraft()
     void syncServerHistory().catch((error) => {
       useStore.getState().showToast(error instanceof Error ? error.message : '历史记录同步失败', 'error')
     })
@@ -1154,7 +1163,7 @@ export async function initStore() {
 
   // 收集所有任务引用的图片 id
   const referencedIds = new Set<string>()
-  const persistedInputImages = useStore.getState().inputImages
+  const persistedInputImages = hasAuthSession ? [] : useStore.getState().inputImages
   for (const img of persistedInputImages) referencedIds.add(img.id)
   for (const t of tasks) {
     for (const id of t.inputImageIds || []) referencedIds.add(id)

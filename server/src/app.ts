@@ -60,13 +60,22 @@ export async function createApp(context: AppContext) {
   await app.register(staticPlugin, {
     root: publicDir,
     prefix: '/',
+    setHeaders: (response, filePath) => {
+      if (filePath.endsWith('index.html') || filePath.endsWith('sw.js')) {
+        response.setHeader('Cache-Control', 'no-store')
+        return
+      }
+      if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+        response.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+      }
+    },
   })
 
   app.setNotFoundHandler(async (request, reply) => {
     if (request.url.startsWith('/api/')) {
       return reply.status(404).send({ error: { code: 'NOT_FOUND', message: '接口不存在' } })
     }
-    return reply.sendFile('index.html')
+    return reply.header('Cache-Control', 'no-store').sendFile('index.html')
   })
 
   return app

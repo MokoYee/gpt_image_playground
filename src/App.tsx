@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { initStore, syncServerHistory, useStore } from './store'
+import { initStore, resetAuthenticatedDraft, syncServerHistory, useStore } from './store'
 import { buildSettingsFromUrlParams, clearUrlSettingParams, hasUrlSettingParams } from './lib/urlSettings'
 import { useDockerApiUrlMigrationNotice } from './hooks/useDockerApiUrlMigrationNotice'
 import Header from './components/Header'
@@ -100,6 +100,7 @@ export default function App() {
 
   const handleAuthenticated = (user: AppUser) => {
     setAuthSession(user)
+    resetAuthenticatedDraft()
     void syncServerHistory()
     window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`)
     setView('app')
