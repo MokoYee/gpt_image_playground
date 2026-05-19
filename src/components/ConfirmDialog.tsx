@@ -30,8 +30,10 @@ export default function ConfirmDialog() {
   const confirmDialog = useStore((s) => s.confirmDialog)
   const setConfirmDialog = useStore((s) => s.setConfirmDialog)
   const [canConfirm, setCanConfirm] = useState(true)
+  const [isConfirming, setIsConfirming] = useState(false)
 
   useEffect(() => {
+    setIsConfirming(false)
     const delay = confirmDialog?.minConfirmDelayMs ?? 0
     if (!confirmDialog || delay <= 0) {
       setCanConfirm(true)
@@ -44,13 +46,25 @@ export default function ConfirmDialog() {
   }, [confirmDialog])
 
   const handleClose = () => {
-    if (!canConfirm) return
+    if (!canConfirm || isConfirming) return
     setConfirmDialog(null)
   }
 
   const handleCancel = () => {
+    if (isConfirming) return
     confirmDialog?.cancelAction?.()
     handleClose()
+  }
+
+  const handleConfirm = async () => {
+    if (!confirmDialog || !canConfirm || isConfirming) return
+    setIsConfirming(true)
+    try {
+      await confirmDialog.action()
+      setConfirmDialog(null)
+    } catch {
+      setIsConfirming(false)
+    }
   }
 
   useCloseOnEscape(Boolean(confirmDialog) && canConfirm, handleClose)
@@ -99,21 +113,18 @@ export default function ConfirmDialog() {
           {confirmDialog.showCancel !== false && (
             <button
               onClick={handleCancel}
-              className="flex-1 py-2 rounded-lg border border-gray-200 dark:border-white/[0.08] text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition"
+              disabled={isConfirming}
+              className="flex-1 py-2 rounded-lg border border-gray-200 dark:border-white/[0.08] text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition disabled:cursor-not-allowed disabled:opacity-60"
             >
               {cancelText}
             </button>
           )}
           <button
-            onClick={() => {
-              if (!canConfirm) return
-              confirmDialog.action()
-              setConfirmDialog(null)
-            }}
-            disabled={!canConfirm}
+            onClick={handleConfirm}
+            disabled={!canConfirm || isConfirming}
             className={`flex-1 py-2 rounded-lg text-white text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${confirmClassName}`}
           >
-            {confirmText}
+            {isConfirming ? '处理中...' : confirmText}
           </button>
         </div>
       </div>

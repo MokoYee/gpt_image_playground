@@ -51,7 +51,7 @@ vi.mock('./lib/db', () => {
   }
 })
 import { clearImages, putImage } from './lib/db'
-import { editOutputs, getPersistedState, getTaskApiProfile, markInterruptedOpenAIRunningTasks, reuseConfig, submitTask, useStore } from './store'
+import { editOutputs, getPersistedState, getTaskApiProfile, markInterruptedOpenAIRunningTasks, removeMultipleTasks, removeTask, reuseConfig, submitTask, useStore } from './store'
 
 const imageA = { id: 'image-a', dataUrl: 'data:image/png;base64,a' }
 const imageB = { id: 'image-b', dataUrl: 'data:image/png;base64,b' }
@@ -84,6 +84,7 @@ describe('mask draft lifecycle in store actions', () => {
       maskEditorImageId: null,
       params: { ...DEFAULT_PARAMS },
       tasks: [],
+      selectedTaskIds: [],
       detailTaskId: null,
       lightboxImageId: null,
       lightboxImageList: [],
@@ -124,6 +125,39 @@ describe('mask draft lifecycle in store actions', () => {
     await submitTask()
 
     expect(useStore.getState().maskDraft).toBeNull()
+  })
+
+  it('shows a success toast after deleting a local task', async () => {
+    const showToast = vi.fn()
+    const record = task({ id: 'task-to-delete', outputImages: ['image-to-delete'] })
+    useStore.setState({
+      tasks: [record],
+      showToast,
+    })
+    await putImage({ id: 'image-to-delete', dataUrl: 'data:image/png;base64,a', source: 'generated', createdAt: 1 })
+
+    await removeTask(record)
+
+    expect(useStore.getState().tasks).toEqual([])
+    expect(showToast).toHaveBeenCalledWith('记录已删除', 'success')
+  })
+
+  it('shows a success toast and clears deleted selection after batch delete', async () => {
+    const showToast = vi.fn()
+    useStore.setState({
+      tasks: [
+        task({ id: 'task-a' }),
+        task({ id: 'task-b' }),
+      ],
+      selectedTaskIds: ['task-a', 'task-b'],
+      showToast,
+    })
+
+    await removeMultipleTasks(['task-a', 'task-b'])
+
+    expect(useStore.getState().tasks).toEqual([])
+    expect(useStore.getState().selectedTaskIds).toEqual([])
+    expect(showToast).toHaveBeenCalledWith('已删除 2 条记录', 'success')
   })
 
   it('preserves selected image mentions when replacing a mask target with an equivalent image id', () => {

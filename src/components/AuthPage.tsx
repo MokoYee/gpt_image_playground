@@ -93,7 +93,7 @@ export default function AuthPage({ appName, onAppNameChange, onAuthenticated }: 
   const [errors, setErrors] = useState<Record<string, string | null>>({})
   const [message, setMessage] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const [registrationOpen, setRegistrationOpen] = useState(true)
+  const [registrationOpen, setRegistrationOpen] = useState<boolean | null>(null)
   const logoText = (appName.trim() || DEFAULT_APP_NAME).slice(0, 1).toUpperCase()
 
   useEffect(() => {
@@ -227,16 +227,16 @@ export default function AuthPage({ appName, onAppNameChange, onAuthenticated }: 
                 </p>
               </div>
 
-              <div className={mode === 'register' ? 'mb-4 flex rounded-xl bg-gray-100 p-1' : 'mb-5 flex rounded-xl bg-gray-100 p-1'}>
-                <ModeButton active={mode === 'login'} onClick={() => switchMode('login')}>
-                  登录
-                </ModeButton>
-                {registrationOpen && (
+              {registrationOpen && (
+                <div className={mode === 'register' ? 'mb-4 flex rounded-xl bg-gray-100 p-1' : 'mb-5 flex rounded-xl bg-gray-100 p-1'}>
+                  <ModeButton active={mode === 'login'} onClick={() => switchMode('login')}>
+                    登录
+                  </ModeButton>
                   <ModeButton active={mode === 'register'} onClick={() => switchMode('register')}>
                     注册
                   </ModeButton>
-                )}
-              </div>
+                </div>
+              )}
 
               {mode === 'login' && (
                 <form onSubmit={handleLogin} noValidate className="grid gap-3">

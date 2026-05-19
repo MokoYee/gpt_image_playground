@@ -340,7 +340,7 @@ export default function InputBar() {
       title: '批量删除',
       message: `确定要删除选中的 ${selectedTaskIds.length} 条记录吗？`,
       action: () => {
-        removeMultipleTasks(selectedTaskIds)
+        return removeMultipleTasks(selectedTaskIds)
       },
     })
   }, [selectedTaskIds, setConfirmDialog])

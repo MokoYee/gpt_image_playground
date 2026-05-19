@@ -112,6 +112,10 @@ export default function DetailModal() {
   const maskTargetSrc = maskTargetId ? imageSrcs[maskTargetId] || '' : ''
   const maskSrc = task?.maskImageId ? imageSrcs[task.maskImageId] || '' : ''
   const allInputImageIds = task?.inputImageIds ?? []
+  const rawImageUrls = task?.rawImageUrls ?? []
+  const outputImageFileIds = task?.outputImageFileIds ?? []
+  const outputImageFileIdKey = outputImageFileIds.join('\n')
+  const [protectedImageLinks, setProtectedImageLinks] = useState<string[]>([])
 
   useEffect(() => {
     if (!currentOutputImageId) {
@@ -176,6 +180,24 @@ export default function DetailModal() {
     }
   }, [maskTargetSrc, maskSrc])
 
+  useEffect(() => {
+    if (!showRawUrlsModal || !outputImageFileIds.length) {
+      setProtectedImageLinks([])
+      return
+    }
+    let cancelled = false
+    Promise.all(outputImageFileIds.map((fileId) => createProtectedImageLink(fileId)))
+      .then((links) => {
+        if (!cancelled) setProtectedImageLinks(links)
+      })
+      .catch(() => {
+        if (!cancelled) setProtectedImageLinks([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [outputImageFileIdKey, showRawUrlsModal])
+
   if (!task) return null
 
   const outputLen = task.outputImages?.length || 0
@@ -194,9 +216,6 @@ export default function DetailModal() {
   const taskModel = task.apiModel || '未知'
   const showSourceInfo = Boolean(task.apiProvider || task.apiProfileName || task.apiModel)
   const isCustomReconnecting = task.status === 'error' && task.customRecoverable
-  const rawImageUrls = task.rawImageUrls ?? []
-  const outputImageFileIds = task.outputImageFileIds ?? []
-  const [protectedImageLinks, setProtectedImageLinks] = useState<string[]>([])
 
   const formatTime = (ts: number | null) => {
     if (!ts) return ''
@@ -242,21 +261,6 @@ export default function DetailModal() {
       action: () => removeTask(task),
     })
   }
-
-  useEffect(() => {
-    if (!showRawUrlsModal || !outputImageFileIds.length) return
-    let cancelled = false
-    Promise.all(outputImageFileIds.map((fileId) => createProtectedImageLink(fileId)))
-      .then((links) => {
-        if (!cancelled) setProtectedImageLinks(links)
-      })
-      .catch(() => {
-        if (!cancelled) setProtectedImageLinks([])
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [outputImageFileIds, showRawUrlsModal])
 
   const handleToggleFavorite = () => {
     void toggleTaskFavorite(task)

@@ -619,7 +619,7 @@ interface AppState {
     minConfirmDelayMs?: number
     messageAlign?: 'left' | 'center'
     tone?: 'danger' | 'warning'
-    action: () => void
+    action: () => void | Promise<void>
     cancelAction?: () => void
   } | null
   setConfirmDialog: (d: AppState['confirmDialog']) => void
@@ -1635,12 +1635,23 @@ export async function editOutputs(task: TaskRecord) {
   showToast(`已添加 ${added} 张输出图到输入`, 'success')
 }
 
-/** 删除多条任务 */
-export async function removeMultipleTasks(taskIds: string[]) {
-  const { tasks, setTasks, inputImages, showToast, clearSelection, selectedTaskIds } = useStore.getState()
-  
-  if (!taskIds.length) return
+function getDeletionErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error || '删除失败')
+}
 
+async function deleteServerTaskForRemoval(task: TaskRecord) {
+  if (!task.serverTaskId || !readAuthSession()) return
+  if (task.status === 'running') {
+    throw new Error('生成中的任务暂不能删除，请完成后再试')
+  }
+  if (task.status === 'queued') {
+    await cancelImageTask(task.serverTaskId)
+  }
+  await deleteImageTask(task.serverTaskId)
+}
+
+async function removeLocalTasks(taskIds: string[]) {
+  const { tasks, setTasks, inputImages, selectedTaskIds } = useStore.getState()
   const toDelete = new Set(taskIds)
   const remaining = tasks.filter(t => !toDelete.has(t.id))
 
@@ -1682,48 +1693,57 @@ export async function removeMultipleTasks(taskIds: string[]) {
   if (newSelection.length !== selectedTaskIds.length) {
     useStore.getState().setSelectedTaskIds(newSelection)
   }
+}
 
-  showToast(`已删除 ${taskIds.length} 条记录`, 'success')
+/** 删除多条任务 */
+export async function removeMultipleTasks(taskIds: string[]) {
+  const { tasks, showToast } = useStore.getState()
+  
+  if (!taskIds.length) return
+
+  const uniqueTaskIds = Array.from(new Set(taskIds))
+  const targets = tasks.filter((task) => uniqueTaskIds.includes(task.id))
+  const deletedIds: string[] = []
+  const failed: string[] = []
+
+  for (const task of targets) {
+    try {
+      await deleteServerTaskForRemoval(task)
+      deletedIds.push(task.id)
+    } catch (error) {
+      failed.push(getDeletionErrorMessage(error))
+    }
+  }
+
+  if (deletedIds.length) {
+    await removeLocalTasks(deletedIds)
+  }
+
+  if (failed.length) {
+    const message = failed[0]
+    if (deletedIds.length) {
+      showToast(`已删除 ${deletedIds.length} 条，${failed.length} 条删除失败：${message}`, 'error')
+      return
+    }
+    showToast(`删除失败：${message}`, 'error')
+    throw new Error(message)
+  }
+
+  showToast(`已删除 ${deletedIds.length} 条记录`, 'success')
 }
 
 /** 删除单条任务 */
 export async function removeTask(task: TaskRecord) {
-  const { tasks, setTasks, inputImages, showToast } = useStore.getState()
-  if (task.serverTaskId && readAuthSession() && task.status !== 'running' && task.status !== 'queued') {
-    await deleteImageTask(task.serverTaskId)
+  const { showToast } = useStore.getState()
+  try {
+    await deleteServerTaskForRemoval(task)
+    await removeLocalTasks([task.id])
+    showToast('记录已删除', 'success')
+  } catch (error) {
+    const message = getDeletionErrorMessage(error)
+    showToast(`删除失败：${message}`, 'error')
+    throw error
   }
-
-  // 收集此任务关联的图片
-  const taskImageIds = new Set([
-    ...(task.inputImageIds || []),
-    ...(task.maskImageId ? [task.maskImageId] : []),
-    ...(task.outputImages || []),
-  ])
-
-  // 从列表移除
-  const remaining = tasks.filter((t) => t.id !== task.id)
-  setTasks(remaining)
-  await dbDeleteTask(task.id)
-
-  // 找出其他任务仍引用的图片
-  const stillUsed = new Set<string>()
-  for (const t of remaining) {
-    for (const id of t.inputImageIds || []) stillUsed.add(id)
-    if (t.maskImageId) stillUsed.add(t.maskImageId)
-    for (const id of t.outputImages || []) stillUsed.add(id)
-  }
-  for (const img of inputImages) stillUsed.add(img.id)
-
-  // 删除孤立图片
-  for (const imgId of taskImageIds) {
-    if (!stillUsed.has(imgId)) {
-      await deleteImage(imgId)
-      imageCache.delete(imgId)
-      thumbnailCache.delete(imgId)
-    }
-  }
-
-  showToast('记录已删除', 'success')
 }
 
 /** 清空数据选项 */
