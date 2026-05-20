@@ -2,9 +2,11 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
 import './index.css'
+import { applyThemePreference } from './lib/theme'
 import { installMobileViewportGuards } from './lib/viewport'
 
 installMobileViewportGuards()
+applyThemePreference()
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations().then((registrations) => {

@@ -45,6 +45,9 @@ import { createProtectedImageLink, fetchProtectedImageDataUrl } from '../lib/api
 import { copyTextToClipboard, getClipboardFailureMessage } from '../lib/clipboard'
 import { useStore } from '../store'
 import Lightbox from './Lightbox'
+import ThemeToggle from './ThemeToggle'
+import { readThemePreference, resolveThemePreference } from '../lib/theme'
+import type { ResolvedTheme } from '../lib/theme'
 
 interface ConsolePageProps {
   currentUser: AppUser
@@ -53,7 +56,7 @@ interface ConsolePageProps {
   onClose: () => void
 }
 
-type ConsoleTab = 'overview' | 'users' | 'credits' | 'usage' | 'settings' | 'audit'
+type ConsoleTab = 'users' | 'credits' | 'usage' | 'settings' | 'audit'
 type ModelApiMode = ModelProfile['apiMode']
 type ModelEnvironment = ModelProfile['environment']
 
@@ -329,15 +332,6 @@ function RowActionButton({ label, title, disabled, onClick, children }: { label:
 }
 
 function NavIcon({ type }: { type: ConsoleTab }) {
-  if (type === 'overview') {
-    return (
-      <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-        <path d="M4 11.5 12 4l8 7.5" />
-        <path d="M6.5 10.5V20h11v-9.5" />
-        <path d="M10 20v-5h4v5" />
-      </svg>
-    )
-  }
   if (type === 'settings') {
     return (
       <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
@@ -436,10 +430,11 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
   const [error, setError] = useState<string | null>(null)
   const [dialogError, setDialogError] = useState<string | null>(null)
   const [form, setForm] = useState(EMPTY_CREATE_USER_FORM)
-  const [isDarkMode, setIsDarkMode] = useState(true)
+  const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() => resolveThemePreference(readThemePreference()))
   const [messageApi, messageContextHolder] = message.useMessage()
   const [modalApi, modalContextHolder] = Modal.useModal()
   const setLightboxImageId = useStore((state) => state.setLightboxImageId)
+  const isDarkMode = resolvedTheme === 'dark'
 
   const totals = useMemo(() => {
     const today = new Date()
@@ -521,10 +516,6 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
     void refreshSettings().catch((error) => {
       setError(error instanceof Error ? error.message : '系统设置加载失败')
     })
-  }, [])
-
-  useEffect(() => {
-    setIsDarkMode(true)
   }, [])
 
   const copyText = async (value: string, successText: string) => {
@@ -764,7 +755,6 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
   }
 
   const navItems: Array<{ key: ConsoleTab; label: string; desc: string }> = [
-    { key: 'overview', label: '概览', desc: '总览' },
     { key: 'users', label: '用户管理', desc: '账号' },
     { key: 'usage', label: '创作记录', desc: '图片' },
     { key: 'settings', label: '系统设置', desc: '配置' },
@@ -1146,12 +1136,12 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
         token: {
           borderRadius: 8,
           colorPrimary: '#3b82f6',
-          colorBgBase: '#080b12',
-          colorBgContainer: '#10141d',
-          colorBgElevated: '#121722',
-          colorBorder: 'rgba(255,255,255,0.10)',
-          colorText: '#e5edf7',
-          colorTextSecondary: '#9aa4b2',
+          colorBgBase: isDarkMode ? '#080b12' : '#f4f7fb',
+          colorBgContainer: isDarkMode ? '#10141d' : '#ffffff',
+          colorBgElevated: isDarkMode ? '#121722' : '#ffffff',
+          colorBorder: isDarkMode ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.12)',
+          colorText: isDarkMode ? '#e5edf7' : '#142033',
+          colorTextSecondary: isDarkMode ? '#9aa4b2' : '#667085',
           fontFamily: 'var(--font-ui-sans)',
         },
         components: {
@@ -1160,7 +1150,7 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
             borderRadius: 8,
             cellPaddingBlockSM: 8,
             cellPaddingInlineSM: 10,
-            headerBg: '#101a2a',
+            headerBg: isDarkMode ? '#101a2a' : '#f8fafc',
           },
         },
       }}
@@ -1180,6 +1170,10 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
 
         <div className="safe-area-x mx-auto grid max-w-7xl items-start gap-4 py-5 lg:grid-cols-[196px_minmax(0,1fr)]">
           <aside className="self-start overflow-hidden rounded-xl border border-gray-200/70 bg-white shadow-sm dark:border-white/[0.08] dark:bg-gray-900 lg:sticky lg:top-20">
+            <div className="console-reference-brand">
+              <span><NavIcon type="usage" /></span>
+              <strong>{appName}</strong>
+            </div>
             {navItems.map((item) => (
               <Button
                 key={item.key}
@@ -1202,25 +1196,25 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
             ))}
           </aside>
 
-          <section className="min-w-0 overflow-hidden rounded-xl border border-gray-200/70 bg-white shadow-sm dark:border-white/[0.08] dark:bg-gray-900">
+          <section className="console-content-scroll min-w-0 overflow-hidden rounded-xl border border-gray-200/70 bg-white shadow-sm dark:border-white/[0.08] dark:bg-gray-900">
             <div className="console-reference-topbar">
-              <div className="console-reference-brand">
-                <span><NavIcon type="usage" /></span>
-                <strong>{appName}</strong>
-              </div>
-              <div className="console-reference-user">
-                <button type="button" onClick={onClose} title="返回生图" aria-label="返回生图">
-                  <ArrowLeftOutlined />
-                </button>
-                <span className="console-reference-avatar">{userInitial(currentUser)}</span>
-                <strong>{currentUser.username}</strong>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
-                  <path d="m6 9 6 6 6-6" />
-                </svg>
+              <div className="console-reference-actions">
+                <ThemeToggle className="console-page-theme-toggle" onResolvedThemeChange={setResolvedTheme} />
+                <div className="console-reference-user">
+                  <button type="button" onClick={onClose} title="返回生图" aria-label="返回生图">
+                    <ArrowLeftOutlined />
+                  </button>
+                  <span className="console-reference-avatar">{userInitial(currentUser)}</span>
+                  <strong>{currentUser.username}</strong>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
+                </div>
               </div>
             </div>
+            <div className="console-content-body">
             {tab === 'users' && (
-              <div className="flex justify-end border-b border-gray-200/70 px-5 py-4 dark:border-white/[0.08]">
+              <div className="console-panel-actionbar flex justify-end px-5 py-4">
                 <Button
                   type="primary"
                   icon={<UserAddOutlined />}
@@ -1234,7 +1228,7 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
               </div>
             )}
 
-            <div className="grid gap-3 border-b border-gray-200/70 bg-gray-50/60 p-4 dark:border-white/[0.08] dark:bg-white/[0.02] sm:grid-cols-4">
+            <div className="console-stats-grid grid gap-3 bg-gray-50/60 p-4 dark:bg-white/[0.02] sm:grid-cols-4">
               <Stat label="用户总数" value={totals.users} trend="+12%" icon="users" />
               <Stat label="启用账号" value={totals.enabled} trend="+8%" icon="enabled" />
               <Stat label="总 Credits" value={totals.credits} trend="+23%" icon="credits" />
@@ -1248,7 +1242,7 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
             )}
 
             {tab === 'users' && (
-              <div className="p-5">
+              <div className="console-table-panel p-5">
                 <Table<AppUser>
                   className="console-compact-table"
                   rowKey="id"
@@ -1263,7 +1257,7 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
             )}
 
             {tab === 'credits' && (
-              <div className="p-5">
+              <div className="console-table-panel p-5">
                 <Table<CreditRecord>
                   className="console-compact-table"
                   rowKey="id"
@@ -1277,8 +1271,8 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
               </div>
             )}
 
-            {(tab === 'usage' || tab === 'overview') && (
-              <div className="p-5">
+            {tab === 'usage' && (
+              <div className="console-table-panel p-5">
                 <Form layout="vertical" className="console-filter-form mb-4 rounded-xl border border-gray-200/70 bg-gray-50 p-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
                   <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     <Form.Item label="用户" className="mb-0">
@@ -1388,7 +1382,7 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
             )}
 
           {tab === 'settings' && (
-            <div className="grid gap-4 p-5 lg:grid-cols-2">
+            <div className="console-settings-panel grid gap-4 p-5 lg:grid-cols-2">
               <section className="rounded-xl border border-gray-200/70 p-4 dark:border-white/[0.08] lg:col-span-2">
                 <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">基础信息</h3>
                 <Form layout="vertical" className="mt-4">
@@ -1527,8 +1521,8 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
             </div>
           )}
 
-          {tab === 'audit' && (
-            <div className="p-5">
+            {tab === 'audit' && (
+              <div className="console-table-panel p-5">
               <Table<AuditLog>
                 className="console-compact-table"
                 rowKey="id"
@@ -1541,6 +1535,7 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
               />
             </div>
           )}
+            </div>
         </section>
       </div>
 

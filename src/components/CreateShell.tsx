@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useStore } from '../store'
 import { getActiveApiProfile } from '../lib/apiProfiles'
 import type { AppUser } from '../lib/auth'
+import ThemeToggle from './ThemeToggle'
 
 interface CreateShellProps {
   appName: string
@@ -78,8 +79,19 @@ function UserAvatar({ user }: { user: AppUser }) {
   )
 }
 
+type CreateNavKey = 'create' | 'gallery' | 'favorite' | 'history'
+type CreateNavIconType = Parameters<typeof CreateIcon>[0]['type']
+
+const CREATE_NAV_ITEMS: Array<{ key: CreateNavKey; label: string; type: CreateNavIconType }> = [
+  { key: 'create', label: '创作', type: 'create' },
+  { key: 'gallery', label: '画廊', type: 'gallery' },
+  { key: 'favorite', label: '收藏', type: 'favorite' },
+  { key: 'history', label: '历史', type: 'history' },
+]
+
 function CreateSidebar({ appName, user, onLogout, onOpenAccount, onOpenConsole }: Omit<CreateShellProps, 'children'>) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const [activeNavKey, setActiveNavKey] = useState<CreateNavKey>('create')
   const timerRef = useRef<number | null>(null)
 
   useEffect(() => () => {
@@ -96,33 +108,31 @@ function CreateSidebar({ appName, user, onLogout, onOpenAccount, onOpenConsole }
     timerRef.current = window.setTimeout(() => setMenuOpen(false), 160)
   }
 
-  const items = [
-    { key: 'create', label: '创作', type: 'create' as const, active: true },
-    { key: 'gallery', label: '画廊', type: 'gallery' as const },
-    { key: 'favorite', label: '收藏', type: 'favorite' as const },
-    { key: 'history', label: '历史', type: 'history' as const },
-  ]
-
   return (
     <aside className="create-sidebar" data-no-drag-select>
       <div className="create-brand-mark" title={appName}>
         <CreateIcon type="gallery" />
       </div>
-      <nav className="create-nav-list" aria-label="创作导航">
-        {items.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            className={`create-nav-item${item.active ? ' is-active' : ''}`}
-            onClick={(item as { onClick?: () => void }).onClick}
-            title={item.label}
-          >
-            <span><CreateIcon type={item.type} /></span>
-            <em>{item.label}</em>
-          </button>
-        ))}
+      <nav className="create-nav-list justify-center" aria-label="创作导航">
+        {CREATE_NAV_ITEMS.map((item) => {
+          const isActive = activeNavKey === item.key
+          return (
+            <button
+              key={item.key}
+              type="button"
+              className={`create-nav-item${isActive ? ' is-active' : ''}`}
+              aria-current={isActive ? 'page' : undefined}
+              onClick={() => setActiveNavKey(item.key)}
+              title={item.label}
+            >
+              <span><CreateIcon type={item.type} /></span>
+              <em>{item.label}</em>
+            </button>
+          )
+        })}
       </nav>
       <div className="create-sidebar-footer">
+        <ThemeToggle className="create-sidebar-theme-toggle" />
         <div className="create-credit-card">
           <span>Credits</span>
           <strong>{Number.isFinite(user.credits) ? user.credits.toFixed(0) : '-'}</strong>
