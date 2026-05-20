@@ -25,6 +25,15 @@ type AppView = 'app' | 'console' | 'account'
 
 const CREATE_MODEL_OPTIONS = ['image-1', 'image-1.5', 'image-2'] as const
 type CreateModelOption = typeof CREATE_MODEL_OPTIONS[number]
+const CREATE_MODEL_ALIASES: Record<CreateModelOption, string[]> = {
+  'image-1': ['image-1', 'gpt-image-1'],
+  'image-1.5': ['image-1.5', 'gpt-image-1.5'],
+  'image-2': ['image-2', 'gpt-image-2'],
+}
+
+function getCreateModelOption(model: string): CreateModelOption {
+  return CREATE_MODEL_OPTIONS.find((option) => CREATE_MODEL_ALIASES[option].includes(model)) ?? 'image-2'
+}
 
 function formatQueueTime(task: TaskRecord) {
   if (task.elapsed != null && task.elapsed > 0) return `${Math.max(1, Math.round(task.elapsed / 1000))}秒`
@@ -118,6 +127,7 @@ function CreateReferenceModelRow() {
   const inputImages = useStore((state) => state.inputImages)
   const settings = useStore((state) => state.settings)
   const setSettings = useStore((state) => state.setSettings)
+  const removeInputImage = useStore((state) => state.removeInputImage)
   const [modelMenuOpen, setModelMenuOpen] = useState(false)
   const [uploadingReference, setUploadingReference] = useState(false)
   const modelMenuRef = useRef<HTMLDivElement>(null)
@@ -125,9 +135,7 @@ function CreateReferenceModelRow() {
   const activeProfile = getActiveApiProfile(settings)
   const firstImage = inputImages[0]
   const referenceLimitReached = inputImages.length >= 4
-  const activeModel = CREATE_MODEL_OPTIONS.includes(activeProfile.model as CreateModelOption)
-    ? activeProfile.model as CreateModelOption
-    : 'image-2'
+  const activeModel = getCreateModelOption(activeProfile.model)
 
   const handleReferenceFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(event.currentTarget.files ?? [])
@@ -156,12 +164,6 @@ function CreateReferenceModelRow() {
   }
 
   useEffect(() => {
-    if (!CREATE_MODEL_OPTIONS.includes(activeProfile.model as CreateModelOption)) {
-      setSettings({ model: 'image-2' })
-    }
-  }, [activeProfile.model, setSettings])
-
-  useEffect(() => {
     if (!modelMenuOpen) return
 
     const closeModelMenu = (event: MouseEvent) => {
@@ -178,11 +180,13 @@ function CreateReferenceModelRow() {
     <section className="create-reference-model-row" data-no-drag-select>
       <article className="create-reference-card">
         <h2>参考图</h2>
-        <div className="create-reference-body">
-          <div className="create-reference-image">
-            <img src={firstImage?.dataUrl || '/design-reference/create-reference.png'} alt="" />
-            <span>×</span>
-          </div>
+        <div className={`create-reference-body${firstImage ? '' : ' is-empty'}`}>
+          {firstImage && (
+            <div className="create-reference-image">
+              <img src={firstImage.dataUrl} alt="" />
+              <button type="button" onClick={() => removeInputImage(0)} aria-label="删除参考图">×</button>
+            </div>
+          )}
           <button
             type="button"
             className="create-reference-empty"
@@ -235,7 +239,7 @@ function CreateReferenceModelRow() {
                   aria-selected={activeModel === model}
                   className={activeModel === model ? 'is-active' : ''}
                   onClick={() => {
-                    setSettings({ model })
+                    setSettings({ model: model === 'image-2' ? 'gpt-image-2' : model })
                     setModelMenuOpen(false)
                   }}
                 >

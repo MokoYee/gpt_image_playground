@@ -4054,6 +4054,31 @@ body::before {
   opacity: 0.62;
 }
 
+.create-reference-body.is-empty {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.create-reference-image button {
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.62);
+  color: white;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.create-reference-image button:hover {
+  background: rgba(239, 68, 68, 0.88);
+}
+
 .create-settings-panel {
   display: flex !important;
   flex-direction: column;

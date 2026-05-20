@@ -1640,7 +1640,6 @@ export default function InputBar({ variant = 'floating' }: InputBarProps = {}) {
 
         <div data-input-bar className="image-pro-inputbar create-inputbar">
           <div ref={cardRef} className="image-pro-composer create-prompt-panel">
-            {inputImages.length > 0 && <div className="create-reference-strip">{renderImageThumbs()}</div>}
             <div className="create-prompt-editor">
               {showAtImageMenu && (
                 <div style={{ left: `${menuLeft}px` }} className="absolute bottom-full z-50 mb-2 w-64 overflow-hidden rounded-2xl border border-gray-200/70 bg-white/95 p-1.5 shadow-xl ring-1 ring-black/5 backdrop-blur-xl dark:border-white/[0.08] dark:bg-gray-900/95 dark:ring-white/10">

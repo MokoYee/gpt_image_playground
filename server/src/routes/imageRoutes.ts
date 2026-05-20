@@ -23,7 +23,7 @@ const TaskParamsSchema = z.object({
 
 const GenerateSchema = z.object({
   localTaskId: z.string().trim().min(1).max(120).optional(),
-  model: z.enum(['image-1', 'image-1.5', 'image-2']).optional(),
+  model: z.string().trim().min(1).max(120).optional(),
   prompt: z.string().trim().min(1),
   params: TaskParamsSchema,
   inputImageDataUrls: z.array(z.string().startsWith('data:')).default([]),
@@ -32,8 +32,25 @@ const GenerateSchema = z.object({
 
 const FILE_LINK_TTL_MS = 10 * 60 * 1000
 
+const MODEL_ALIAS_CANDIDATES: Record<string, string[]> = {
+  'image-1': ['image-1', 'gpt-image-1'],
+  'gpt-image-1': ['gpt-image-1', 'image-1'],
+  'image-1.5': ['image-1.5', 'gpt-image-1.5'],
+  'gpt-image-1.5': ['gpt-image-1.5', 'image-1.5'],
+  'image-2': ['image-2', 'gpt-image-2'],
+  'gpt-image-2': ['gpt-image-2', 'image-2'],
+}
+
 function toMillis(value: unknown): number | null {
   return value instanceof Date ? value.getTime() : value ? new Date(String(value)).getTime() : null
+}
+
+function isDevelopmentOnlyModelProfile(profile: { baseUrl: string }) {
+  try {
+    return new URL(profile.baseUrl).hostname === 'codex.xgood.xz.cn'
+  } catch {
+    return profile.baseUrl.includes('codex.xgood.xz.cn')
+  }
 }
 
 function mapTask(row: any, images: any[] = []) {
@@ -156,15 +173,33 @@ async function authorizeImageFile(app: FastifyInstance, request: FastifyRequest,
   if (row.user_id !== request.user.id && request.user.role !== 'admin') throw forbidden('无权查看该图片')
 }
 
+function resolveRequestedModel(settings: Awaited<ReturnType<typeof readSystemSettings>>, requestedModel: string, nodeEnv: string) {
+  const candidates = MODEL_ALIAS_CANDIDATES[requestedModel] ?? [requestedModel]
+  const allowDevelopmentOnlyProfiles = nodeEnv !== 'production'
+  const configuredModel = settings.models.find((model) =>
+    model.enabled &&
+    candidates.includes(model.model) &&
+    (allowDevelopmentOnlyProfiles || !isDevelopmentOnlyModelProfile(model))
+  )
+  if (configuredModel) return configuredModel
+  if (
+    settings.defaultModel &&
+    candidates.includes(settings.defaultModel.model) &&
+    (allowDevelopmentOnlyProfiles || !isDevelopmentOnlyModelProfile(settings.defaultModel))
+  ) {
+    return settings.defaultModel
+  }
+  return settings.defaultModel && (allowDevelopmentOnlyProfiles || !isDevelopmentOnlyModelProfile(settings.defaultModel))
+    ? { ...settings.defaultModel, model: requestedModel }
+    : null
+}
+
 async function createQueuedTask(app: FastifyInstance, userId: string, body: z.infer<typeof GenerateSchema>) {
   const settings = await readSystemSettings(app.context.db)
   if (!settings.defaultModel) throw badRequest('管理员尚未配置启用的默认模型服务')
-  const defaultModel = settings.defaultModel
-  const requestedModel = body.model ?? 'image-2'
-  const selectedModel = settings.models.find((model) => model.enabled && model.model === requestedModel) ?? {
-    ...defaultModel,
-    model: requestedModel,
-  }
+  const requestedModel = body.model ?? settings.defaultModel.model
+  const selectedModel = resolveRequestedModel(settings, requestedModel, app.context.config.NODE_ENV)
+  if (!selectedModel) throw badRequest('管理员尚未配置启用的默认模型服务')
   if (body.localTaskId) {
     const existing = await app.context.db.query<{ id: string; status: string }>(
       'select id::text, status from image_tasks where user_id = $1 and local_task_id = $2',
