@@ -1,0 +1,587 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Login PC UI V2</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #02040a;
+        --panel: rgba(8, 12, 24, 0.72);
+        --panel-strong: rgba(8, 13, 26, 0.92);
+        --line: rgba(255, 255, 255, 0.13);
+        --text: #f8fbff;
+        --muted: #9aa8bc;
+        --faint: #6f7d93;
+        --accent: #4f8bff;
+        --accent-strong: #2563eb;
+        --cyan: #67e8f9;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: #02040a;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+          sans-serif;
+      }
+
+      body {
+        display: grid;
+        place-items: center;
+      }
+
+      .artboard {
+        position: relative;
+        width: 1440px;
+        height: 900px;
+        overflow: hidden;
+        color: var(--text);
+        background:
+          radial-gradient(ellipse at 21% 13%, rgba(92, 168, 255, 0.23), transparent 420px),
+          radial-gradient(ellipse at 69% 78%, rgba(59, 130, 246, 0.16), transparent 430px),
+          radial-gradient(ellipse at 86% 16%, rgba(45, 212, 191, 0.12), transparent 360px),
+          linear-gradient(135deg, #02040a 0%, #06101d 48%, #02030a 100%);
+      }
+
+      .artboard::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+        background-size: 76px 76px;
+        mask-image: linear-gradient(180deg, transparent 0%, #000 18%, #000 72%, transparent 100%);
+        opacity: 0.26;
+      }
+
+      .artboard::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(90deg, rgba(0, 0, 0, 0.28), transparent 38%, rgba(0, 0, 0, 0.34)),
+          linear-gradient(180deg, rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.62));
+        pointer-events: none;
+      }
+
+      .shell {
+        position: absolute;
+        left: 70px;
+        top: 58px;
+        z-index: 1;
+        width: 1300px;
+        height: 784px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 32px;
+        background:
+          radial-gradient(ellipse at 29% 45%, rgba(68, 125, 255, 0.2), transparent 420px),
+          linear-gradient(138deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.025) 38%, rgba(255, 255, 255, 0.07)),
+          rgba(5, 9, 19, 0.68);
+        box-shadow:
+          0 42px 140px rgba(0, 0, 0, 0.6),
+          0 20px 58px rgba(20, 80, 220, 0.14),
+          inset 0 1px 0 rgba(255, 255, 255, 0.16);
+      }
+
+      .shell::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(ellipse at 29% 38%, rgba(102, 172, 255, 0.22), transparent 320px),
+          linear-gradient(90deg, rgba(4, 7, 15, 0.06) 0%, rgba(5, 8, 16, 0.34) 53%, rgba(3, 5, 10, 0.92) 100%);
+        pointer-events: none;
+      }
+
+      .brand-row {
+        position: absolute;
+        left: 44px;
+        right: 44px;
+        top: 34px;
+        z-index: 4;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: #f8fbff;
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0;
+      }
+
+      .brand-mark,
+      .form-mark {
+        display: grid;
+        place-items: center;
+        color: #dbeafe;
+        background: rgba(255, 255, 255, 0.075);
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.16),
+          0 14px 32px rgba(59, 130, 246, 0.18);
+      }
+
+      .brand-mark {
+        width: 34px;
+        height: 34px;
+        border-radius: 12px;
+      }
+
+      .settings {
+        display: grid;
+        width: 38px;
+        height: 38px;
+        place-items: center;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 14px;
+        color: #bfdbfe;
+        background: rgba(255, 255, 255, 0.055);
+      }
+
+      .hero {
+        position: absolute;
+        inset: 0 462px 0 0;
+        z-index: 2;
+      }
+
+      .hero-copy {
+        position: absolute;
+        left: 74px;
+        top: 162px;
+        z-index: 4;
+        width: 410px;
+      }
+
+      .hero-copy h1 {
+        margin: 0;
+        font-size: 48px;
+        font-weight: 750;
+        line-height: 1.08;
+        letter-spacing: 0;
+        text-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+      }
+
+      .hero-copy p {
+        width: 330px;
+        margin: 20px 0 0;
+        color: #b6c2d3;
+        font-size: 15px;
+        line-height: 1.8;
+        letter-spacing: 0;
+      }
+
+      .portal-wrap {
+        position: absolute;
+        left: 350px;
+        top: 108px;
+        z-index: 3;
+        width: 404px;
+        height: 590px;
+      }
+
+      .portal-glow {
+        position: absolute;
+        left: 54px;
+        top: 64px;
+        width: 300px;
+        height: 440px;
+        border-radius: 999px;
+        background: rgba(125, 211, 252, 0.2);
+        filter: blur(62px);
+      }
+
+      .portal-orbit {
+        position: absolute;
+        inset: 46px 46px 82px;
+        border: 1px solid rgba(195, 224, 255, 0.18);
+        border-radius: 999px;
+        transform: rotate(7deg);
+      }
+
+      .portal-orbit::before {
+        content: "";
+        position: absolute;
+        inset: 24px -15px 38px;
+        border: 1px solid rgba(103, 232, 249, 0.12);
+        border-radius: 999px;
+        transform: rotate(-12deg);
+      }
+
+      .portal-wrap img {
+        position: absolute;
+        left: 86px;
+        top: 10px;
+        width: 318px;
+        height: 590px;
+        object-fit: contain;
+        opacity: 0.98;
+        filter: drop-shadow(0 42px 82px rgba(37, 99, 235, 0.35));
+        mask-image: radial-gradient(ellipse at 52% 51%, #000 42%, rgba(0, 0, 0, 0.78) 61%, transparent 82%);
+      }
+
+      .hero-foot {
+        position: absolute;
+        left: 74px;
+        bottom: 54px;
+        z-index: 5;
+        display: flex;
+        width: 642px;
+        align-items: center;
+        justify-content: space-between;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        padding-top: 22px;
+      }
+
+      .foot-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: #b9c5d6;
+        font-size: 13px;
+        letter-spacing: 0;
+      }
+
+      .foot-dot {
+        display: grid;
+        width: 26px;
+        height: 26px;
+        place-items: center;
+        border: 1px solid rgba(125, 211, 252, 0.18);
+        border-radius: 50%;
+        color: #93c5fd;
+        background: rgba(255, 255, 255, 0.045);
+      }
+
+      .auth-rail {
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 3;
+        width: 462px;
+        border-left: 1px solid rgba(255, 255, 255, 0.1);
+        background:
+          linear-gradient(180deg, rgba(13, 18, 31, 0.94), rgba(7, 10, 18, 0.9)),
+          rgba(10, 14, 24, 0.9);
+        box-shadow:
+          -30px 0 80px rgba(0, 0, 0, 0.3),
+          inset 1px 0 0 rgba(255, 255, 255, 0.05);
+      }
+
+      .auth-rail::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(ellipse at 50% 8%, rgba(79, 139, 255, 0.16), transparent 250px),
+          linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 28%);
+        pointer-events: none;
+      }
+
+      .form {
+        position: relative;
+        z-index: 2;
+        width: 356px;
+        margin: 106px auto 0;
+      }
+
+      .form-brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: #f8fbff;
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      .form-mark {
+        width: 40px;
+        height: 40px;
+        border-radius: 14px;
+      }
+
+      .form h2 {
+        margin: 42px 0 0;
+        color: #f8fbff;
+        font-size: 28px;
+        font-weight: 720;
+        line-height: 1.2;
+        letter-spacing: 0;
+      }
+
+      .form .hint {
+        margin: 10px 0 30px;
+        color: #8fa0b8;
+        font-size: 13px;
+        line-height: 1.7;
+      }
+
+      .field {
+        position: relative;
+        display: block;
+        margin-top: 12px;
+      }
+
+      .field > svg {
+        position: absolute;
+        left: 16px;
+        top: 17px;
+        color: #748299;
+      }
+
+      .field input {
+        display: block;
+        width: 100%;
+        height: 52px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 15px;
+        outline: none;
+        padding: 0 46px;
+        color: #e7eefb;
+        font-size: 13px;
+        background: rgba(255, 255, 255, 0.06);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055);
+      }
+
+      .field input::placeholder {
+        color: #8b97aa;
+      }
+
+      .eye {
+        position: absolute;
+        right: 16px;
+        top: 17px;
+        color: #69778d;
+      }
+
+      .eye svg {
+        position: static;
+      }
+
+      .submit {
+        display: flex;
+        width: 100%;
+        height: 52px;
+        align-items: center;
+        justify-content: center;
+        gap: 9px;
+        margin-top: 16px;
+        border: 0;
+        border-radius: 15px;
+        color: white;
+        font-size: 14px;
+        font-weight: 700;
+        background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+        box-shadow: 0 20px 38px rgba(37, 99, 235, 0.34);
+      }
+
+      .divider {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-top: 30px;
+        color: #657388;
+        font-size: 12px;
+      }
+
+      .divider::before,
+      .divider::after {
+        content: "";
+        height: 1px;
+        flex: 1;
+        background: rgba(255, 255, 255, 0.09);
+      }
+
+      .social {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        margin-top: 22px;
+      }
+
+      .social button {
+        display: grid;
+        height: 48px;
+        place-items: center;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 14px;
+        color: #dbe6f6;
+        background: rgba(255, 255, 255, 0.046);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+      }
+
+      .register {
+        margin-top: 92px;
+        color: #8e9caf;
+        text-align: center;
+        font-size: 13px;
+      }
+
+      .register span {
+        color: #60a5fa;
+        font-weight: 600;
+      }
+
+      svg {
+        width: 18px;
+        height: 18px;
+        display: block;
+      }
+
+      .brand-mark svg,
+      .form-mark svg {
+        width: 21px;
+        height: 21px;
+      }
+
+      .settings svg {
+        width: 17px;
+        height: 17px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="artboard">
+      <section class="shell" aria-label="PC 登录页新版 UI 设计稿">
+        <header class="brand-row">
+          <div class="brand">
+            <span class="brand-mark" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none">
+                <path d="M12 3.5c3.95 0 7.15 3.2 7.15 7.15 0 4.96-6.06 8.93-7.15 9.6-1.09-.67-7.15-4.64-7.15-9.6C4.85 6.7 8.05 3.5 12 3.5Z" stroke="currentColor" stroke-width="1.65"/>
+                <path d="M8.65 12.2c1.72-3.35 4.75-4.11 6.88-3.37-1.55.7-2.77 1.88-3.59 3.48-.92 1.78-2.08 2.78-3.29 2.82-.78.02-1.47-.32-1.96-.82.65.05 1.36-.44 1.96-2.11Z" fill="currentColor"/>
+              </svg>
+            </span>
+            <span>灵犀 AI 创作平台</span>
+          </div>
+          <div class="settings" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M12 8.3a3.7 3.7 0 1 1 0 7.4 3.7 3.7 0 0 1 0-7.4Z" stroke="currentColor" stroke-width="1.55"/>
+              <path d="M4.8 13.1v-2.2l2.14-.52c.16-.48.36-.94.62-1.36L6.41 7.15l1.56-1.56 1.87 1.15c.42-.26.88-.47 1.36-.62l.52-2.14h2.2l.52 2.14c.48.15.94.36 1.36.62l1.87-1.15 1.56 1.56-1.15 1.87c.26.42.47.88.62 1.36l2.14.52v2.2l-2.14.52c-.15.48-.36.94-.62 1.36l1.15 1.87-1.56 1.56-1.87-1.15c-.42.26-.88.47-1.36.62l-.52 2.14h-2.2l-.52-2.14a7.17 7.17 0 0 1-1.36-.62l-1.87 1.15-1.56-1.56 1.15-1.87a7.17 7.17 0 0 1-.62-1.36L4.8 13.1Z" stroke="currentColor" stroke-width="1.15" opacity=".62"/>
+            </svg>
+          </div>
+        </header>
+
+        <div class="hero">
+          <div class="hero-copy">
+            <h1>欢迎回来<br />开启你的创意之旅</h1>
+            <p>登录账户以使用 AI 图像生成服务，继续管理你的创作队列、历史记录和模型配置。</p>
+          </div>
+
+          <div class="portal-wrap" aria-hidden="true">
+            <div class="portal-glow"></div>
+            <div class="portal-orbit"></div>
+            <img src="/auth-portal-pro.png" alt="" />
+          </div>
+
+          <div class="hero-foot" aria-hidden="true">
+            <div class="foot-item">
+              <span class="foot-dot">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M7 12h10M12 7v10" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+              </span>
+              <span>提示词创作</span>
+            </div>
+            <div class="foot-item">
+              <span class="foot-dot">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M6 15.5 10.5 11l3 3L18 8.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </span>
+              <span>队列同步</span>
+            </div>
+            <div class="foot-item">
+              <span class="foot-dot">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M12 4.8 18.2 8v8L12 19.2 5.8 16V8L12 4.8Z" stroke="currentColor" stroke-width="1.55"/><path d="M8.8 9.7 12 11.4l3.2-1.7M12 11.4v4.4" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/></svg>
+              </span>
+              <span>模型配置</span>
+            </div>
+          </div>
+        </div>
+
+        <aside class="auth-rail">
+          <form class="form">
+            <div class="form-brand">
+              <span class="form-mark" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path d="M12 3.5c3.95 0 7.15 3.2 7.15 7.15 0 4.96-6.06 8.93-7.15 9.6-1.09-.67-7.15-4.64-7.15-9.6C4.85 6.7 8.05 3.5 12 3.5Z" stroke="currentColor" stroke-width="1.65"/>
+                  <path d="M8.65 12.2c1.72-3.35 4.75-4.11 6.88-3.37-1.55.7-2.77 1.88-3.59 3.48-.92 1.78-2.08 2.78-3.29 2.82-.78.02-1.47-.32-1.96-.82.65.05 1.36-.44 1.96-2.11Z" fill="currentColor"/>
+                </svg>
+              </span>
+              <span>灵犀 AI 创作平台</span>
+            </div>
+
+            <h2>登录</h2>
+            <p class="hint">使用你的账号继续访问创作空间</p>
+
+            <label class="field">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M4.75 7.75h14.5v9.5H4.75v-9.5Z" stroke="currentColor" stroke-width="1.5" />
+                <path d="m5.5 8.35 6.5 5 6.5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+              <input value="codexuimocc5uyx@mail.com" aria-label="用户名或邮箱" />
+            </label>
+
+            <label class="field">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M7.25 10.5h9.5v7.25h-9.5V10.5Z" stroke="currentColor" stroke-width="1.5" />
+                <path d="M9 10.35V8.5a3 3 0 0 1 6 0v1.85" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+              </svg>
+              <input value="••••••••••••••••" aria-label="密码" />
+              <span class="eye" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path d="M4 12s2.8-5 8-5 8 5 8 5-2.8 5-8 5-8-5-8-5Z" stroke="currentColor" stroke-width="1.5" />
+                  <path d="m5 19 14-14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                </svg>
+              </span>
+            </label>
+
+            <button class="submit" type="button">
+              <span>登录</span>
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M5 12h13M13 6.8 18.2 12 13 17.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </button>
+
+            <div class="divider">或继续使用</div>
+
+            <div class="social" aria-hidden="true">
+              <button type="button">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2.75a9.25 9.25 0 0 0-2.92 18.03c.46.08.63-.2.63-.44v-1.62c-2.57.56-3.11-1.1-3.11-1.1-.42-1.07-1.02-1.35-1.02-1.35-.84-.57.06-.56.06-.56.93.06 1.42.95 1.42.95.82 1.41 2.15 1 2.68.77.08-.6.32-1 .59-1.23-2.05-.23-4.2-1.03-4.2-4.56 0-1.01.36-1.84.95-2.48-.1-.23-.41-1.18.09-2.45 0 0 .78-.25 2.54.95A8.75 8.75 0 0 1 12 5.37c.78 0 1.56.1 2.29.31 1.76-1.2 2.54-.95 2.54-.95.5 1.27.19 2.22.09 2.45.59.64.95 1.47.95 2.48 0 3.54-2.16 4.32-4.22 4.55.33.29.63.85.63 1.72v2.41c0 .24.17.52.64.43A9.25 9.25 0 0 0 12 2.75Z" />
+                </svg>
+              </button>
+              <button type="button">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path d="M20.2 12.2c0-.66-.06-1.29-.17-1.89H12v3.57h4.59a3.92 3.92 0 0 1-1.7 2.57v2.1h2.75c1.6-1.48 2.56-3.65 2.56-6.35Z" fill="#4285F4"/>
+                  <path d="M12 20.5c2.29 0 4.22-.76 5.63-2.05l-2.75-2.1c-.76.51-1.74.81-2.88.81-2.21 0-4.08-1.49-4.75-3.5H4.42v2.17A8.49 8.49 0 0 0 12 20.5Z" fill="#34A853"/>
+                  <path d="M7.25 13.66a5.1 5.1 0 0 1 0-3.32V8.17H4.42a8.51 8.51 0 0 0 0 7.66l2.83-2.17Z" fill="#FBBC05"/>
+                  <path d="M12 6.84c1.25 0 2.37.43 3.25 1.27l2.44-2.44A8.22 8.22 0 0 0 12 3.5a8.49 8.49 0 0 0-7.58 4.67l2.83 2.17c.67-2.01 2.54-3.5 4.75-3.5Z" fill="#EA4335"/>
+                </svg>
+              </button>
+              <button type="button">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path d="M12 4.8 18.2 8v8L12 19.2 5.8 16V8L12 4.8Z" stroke="currentColor" stroke-width="1.5"/>
+                  <path d="M8.7 9.7 12 11.5l3.3-1.8M12 11.5v4.5" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/>
+                </svg>
+              </button>
+            </div>
+
+            <p class="register">还没有账户？ <span>立即注册</span></p>
+          </form>
+        </aside>
+      </section>
+    </main>
+  </body>
+</html>

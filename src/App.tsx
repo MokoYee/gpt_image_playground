@@ -375,7 +375,12 @@ export default function App() {
   }
 
   if (!authSession) {
-    return <AuthPage appName={appName} onAppNameChange={setAppName} onAuthenticated={handleAuthenticated} />
+    return (
+      <>
+        <AuthPage appName={appName} onAppNameChange={setAppName} onAuthenticated={handleAuthenticated} />
+        <Toast />
+      </>
+    )
   }
 
   if (view === 'console' && authSession.role === 'admin') {

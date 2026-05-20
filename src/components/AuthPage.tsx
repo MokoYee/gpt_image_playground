@@ -2,6 +2,10 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { authenticateUser, DEFAULT_APP_NAME, readPublicSettings, registerUser } from '../lib/auth'
 import type { AppUser } from '../lib/auth'
+import ThemeToggle from './ThemeToggle'
+import { readThemePreference, resolveThemePreference } from '../lib/theme'
+import type { ResolvedTheme } from '../lib/theme'
+import { useStore } from '../store'
 
 type AuthMode = 'login' | 'register'
 
@@ -67,15 +71,6 @@ function BrandIcon() {
   )
 }
 
-function SettingsIcon() {
-  return (
-    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z" />
-      <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.04.04a2 2 0 0 1-2.83 2.83l-.04-.04A1.7 1.7 0 0 0 15 19.37a1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 0 1-4 0v-.06A1.7 1.7 0 0 0 8.9 19.36a1.7 1.7 0 0 0-1.88.34l-.04.04a2 2 0 0 1-2.83-2.83l.04-.04A1.7 1.7 0 0 0 4.53 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 0 1 0-4h.06A1.7 1.7 0 0 0 4.64 8.9a1.7 1.7 0 0 0-.34-1.88l-.04-.04a2 2 0 1 1 2.83-2.83l.04.04A1.7 1.7 0 0 0 9 4.53a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 0 1 4 0v.06A1.7 1.7 0 0 0 15.1 4.64a1.7 1.7 0 0 0 1.88-.34l.04-.04a2 2 0 0 1 2.83 2.83l-.04.04A1.7 1.7 0 0 0 19.47 9a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 0 1 0 4h-.06A1.7 1.7 0 0 0 19.4 15Z" />
-    </svg>
-  )
-}
-
 function MailIcon() {
   return (
     <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden="true">
@@ -101,34 +96,6 @@ function EyeOffIcon() {
       <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" />
       <path d="M9.9 4.2A10.8 10.8 0 0 1 12 4c5 0 8.5 4 10 8a13.2 13.2 0 0 1-3.1 4.6" />
       <path d="M6.6 6.6A13.2 13.2 0 0 0 2 12c1.5 4 5 8 10 8 1.4 0 2.7-.3 3.8-.9" />
-    </svg>
-  )
-}
-
-function GithubIcon() {
-  return (
-    <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.18-3.37-1.18-.45-1.15-1.1-1.46-1.1-1.46-.9-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.89 1.52 2.34 1.08 2.9.83.09-.64.35-1.08.64-1.33-2.22-.25-4.56-1.11-4.56-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02A9.6 9.6 0 0 1 12 6.02c.85 0 1.7.11 2.5.33 1.9-1.29 2.74-1.02 2.74-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.86v2.76c0 .27.18.58.69.48A10 10 0 0 0 12 2Z" />
-    </svg>
-  )
-}
-
-function GoogleIcon() {
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
-      <path fill="#4285F4" d="M21.6 12.23c0-.76-.07-1.49-.2-2.19H12v4.14h5.38a4.6 4.6 0 0 1-2 3.02v2.51h3.24c1.9-1.75 2.98-4.32 2.98-7.48Z" />
-      <path fill="#34A853" d="M12 22c2.7 0 4.96-.9 6.62-2.29l-3.24-2.51c-.9.6-2.04.95-3.38.95-2.6 0-4.8-1.76-5.59-4.12H3.07v2.59A10 10 0 0 0 12 22Z" />
-      <path fill="#FBBC05" d="M6.41 14.03A6 6 0 0 1 6.1 12c0-.7.11-1.38.31-2.03V7.38H3.07A10 10 0 0 0 2 12c0 1.61.39 3.14 1.07 4.62l3.34-2.59Z" />
-      <path fill="#EA4335" d="M12 5.85c1.47 0 2.8.5 3.84 1.5l2.87-2.88A9.64 9.64 0 0 0 12 2 10 10 0 0 0 3.07 7.38l3.34 2.59C7.2 7.61 9.4 5.85 12 5.85Z" />
-    </svg>
-  )
-}
-
-function CubeIcon() {
-  return (
-    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-      <path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z" />
-      <path d="M12 12 4.4 7.8M12 12l7.6-4.2M12 12v8.5" />
     </svg>
   )
 }
@@ -166,9 +133,10 @@ export default function AuthPage({ appName, onAppNameChange, onAuthenticated }: 
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [errors, setErrors] = useState<Record<string, string | null>>({})
-  const [message, setMessage] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [registrationOpen, setRegistrationOpen] = useState<boolean | null>(null)
+  const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() => resolveThemePreference(readThemePreference()))
+  const showToast = useStore((state) => state.showToast)
   const logoText = (appName.trim() || DEFAULT_APP_NAME).slice(0, 1).toUpperCase()
 
   useEffect(() => {
@@ -188,12 +156,11 @@ export default function AuthPage({ appName, onAppNameChange, onAuthenticated }: 
     if (nextMode === 'register' && !registrationOpen) {
       setMode('login')
       setErrors({})
-      setMessage('当前未开放公开注册，请联系管理员创建账号')
+      showToast('当前未开放公开注册，请联系管理员创建账号', 'info')
       return
     }
     setMode(nextMode)
     setErrors({})
-    setMessage(null)
   }
 
   const handleLogin = async (event: FormEvent) => {
@@ -203,7 +170,6 @@ export default function AuthPage({ appName, onAppNameChange, onAuthenticated }: 
       loginPassword: validatePassword(loginPassword),
     }
     setErrors(nextErrors)
-    setMessage(null)
     if (nextErrors.loginId || nextErrors.loginPassword) return
 
     setSubmitting(true)
@@ -220,7 +186,7 @@ export default function AuthPage({ appName, onAppNameChange, onAuthenticated }: 
   const handleRegister = async (event: FormEvent) => {
     event.preventDefault()
     if (!registrationOpen) {
-      setMessage('当前未开放公开注册，请联系管理员创建账号')
+      showToast('当前未开放公开注册，请联系管理员创建账号', 'info')
       return
     }
     const nextErrors = {
@@ -230,7 +196,6 @@ export default function AuthPage({ appName, onAppNameChange, onAuthenticated }: 
       confirmPassword: confirmPassword === password ? null : '两次输入的密码不一致',
     }
     setErrors(nextErrors)
-    setMessage(null)
     if (Object.values(nextErrors).some(Boolean)) return
 
     setSubmitting(true)
@@ -250,20 +215,17 @@ export default function AuthPage({ appName, onAppNameChange, onAuthenticated }: 
   const handleForgotPassword = () => {
     const emailError = validateEmail(loginId)
     setErrors(emailError ? { loginId: '请输入邮箱地址后再找回密码' } : {})
-    setMessage(emailError ? null : '请联系管理员重置密码')
+    if (!emailError) showToast('请联系管理员重置密码', 'info')
   }
 
-  const socialButtonClass =
-    'flex h-10 flex-1 items-center justify-center rounded-lg border border-white/[0.10] bg-white/[0.045] text-slate-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition hover:border-blue-300/35 hover:bg-white/[0.075] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30'
-
   return (
-    <main className="auth-pro-page auth-reference-login min-h-screen overflow-hidden text-gray-900">
-      <div className="auth-login-backdrop absolute inset-0 bg-black/45" />
-      <div className="auth-login-viewport relative flex min-h-screen items-start justify-center pb-8 pt-[38px]">
-        <section className="auth-login-card relative h-[734px] w-full max-w-[370px] overflow-hidden rounded-lg border border-white/75 bg-white/[0.95] shadow-[0_18px_50px_rgba(15,23,42,0.18)] backdrop-blur-md">
-          <div className="auth-login-surface pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_70%_28%,rgba(59,130,246,0.24),transparent_30%),linear-gradient(180deg,rgba(8,11,18,0.98)_0%,rgba(5,7,12,0.94)_100%)]" />
-          <div className="pointer-events-none absolute left-[-40px] top-[54px] h-[260px] w-[210px] rounded-full bg-blue-500/10 blur-[62px]" />
-          <div className="pointer-events-none absolute right-[-32px] top-[132px] h-[270px] w-[230px] rounded-full bg-cyan-300/10 blur-[58px]" />
+    <main className={`auth-pro-page auth-reference-login auth-theme-${resolvedTheme} min-h-screen overflow-hidden text-gray-900`}>
+      <ThemeToggle className="auth-page-theme-toggle" onResolvedThemeChange={setResolvedTheme} />
+      <div className="auth-login-viewport relative flex min-h-screen items-stretch justify-center">
+        <section className="auth-login-card relative min-h-screen w-full overflow-hidden bg-[#08090d]">
+          <div className="auth-login-visual pointer-events-none absolute z-0 overflow-hidden" aria-hidden="true">
+            <div className="auth-login-visual-media" />
+          </div>
 
           <header className="auth-login-header relative z-20 flex items-center justify-between px-[18px] pt-[17px]">
             <div className="flex items-center gap-2 text-slate-100">
@@ -272,35 +234,22 @@ export default function AuthPage({ appName, onAppNameChange, onAuthenticated }: 
               </span>
               <span className="text-[11px] font-semibold tracking-tight">{appName}</span>
             </div>
-            <button
-              type="button"
-              className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition hover:bg-white/[0.07] hover:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30"
-              aria-label="登录页设置"
-            >
-              <SettingsIcon />
-            </button>
           </header>
 
           {mode === 'login' && (
             <>
-              <div className="auth-login-portal pointer-events-none absolute right-[16px] top-[52px] z-0 h-[320px] w-[196px]">
-                <div className="absolute inset-x-5 top-5 h-[240px] rounded-full bg-blue-300/20 blur-2xl" />
-                <img src="/auth-portal-pro.png" className="relative z-10 h-full w-full object-contain opacity-95 mix-blend-screen" alt="" />
-              </div>
-
-              <div className="auth-login-title absolute left-[28px] top-[84px] z-10 w-[180px]">
-                <h1 className="text-[22px] font-semibold leading-[1.35] tracking-tight text-slate-50">
-                  欢迎回来<br />开启你的创意之旅
-                </h1>
-                <p className="mt-2 text-[11px] leading-5 text-slate-400">登录账户以使用 AI 图像生成服务</p>
-              </div>
-
-              <form onSubmit={handleLogin} noValidate className="auth-login-form absolute left-[37px] right-[37px] top-[369px] z-20">
+              <form onSubmit={handleLogin} noValidate className="auth-login-form relative z-20">
                 <div className="auth-login-form-brand">
                   <span className="flex h-8 w-8 items-center justify-center rounded-xl text-blue-100">
                     <BrandIcon />
                   </span>
                   <span>{appName}</span>
+                </div>
+                <div className="auth-login-copy">
+                  <h1>
+                    欢迎回来<br />开启你的创意之旅
+                  </h1>
+                  <p>登录账户以使用 AI 图像生成服务</p>
                 </div>
                 <label className="relative block">
                     <span className="sr-only">用户名或邮箱</span>
@@ -337,8 +286,6 @@ export default function AuthPage({ appName, onAppNameChange, onAuthenticated }: 
                     <FieldError message={errors.loginPassword} />
                   </label>
 
-                  {message && <div className="mb-3 rounded-lg border border-blue-400/20 bg-blue-500/10 px-3 py-2 text-xs text-blue-200">{message}</div>}
-
                   <button
                     type="submit"
                     disabled={submitting}
@@ -347,25 +294,7 @@ export default function AuthPage({ appName, onAppNameChange, onAuthenticated }: 
                     <span>{submitting ? '登录中' : '登录'}</span>
                   </button>
 
-                  <div className="mt-[19px] flex items-center gap-3">
-                    <div className="h-px flex-1 bg-white/[0.09]" />
-                    <span className="text-[11px] text-slate-500">或继续使用</span>
-                    <div className="h-px flex-1 bg-white/[0.09]" />
-                  </div>
-
-                  <div className="mt-[19px] flex gap-3">
-                    <button type="button" className={socialButtonClass} aria-label="GitHub 登录">
-                      <GithubIcon />
-                    </button>
-                    <button type="button" className={socialButtonClass} aria-label="Google 登录">
-                      <GoogleIcon />
-                    </button>
-                    <button type="button" className={socialButtonClass} aria-label="SSO 登录">
-                      <CubeIcon />
-                    </button>
-                  </div>
-
-                  <div className="auth-login-register mt-[76px] flex justify-center text-[12px] text-slate-400">
+                  <div className="auth-login-register mt-7 flex justify-center text-[12px] text-slate-400">
                     <span>
                       还没有账户？
                     <button
@@ -466,7 +395,6 @@ export default function AuthPage({ appName, onAppNameChange, onAuthenticated }: 
             </div>
           )}
 
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black/45 to-transparent" />
         </section>
       </div>
     </main>
