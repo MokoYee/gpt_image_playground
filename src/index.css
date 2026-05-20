@@ -1302,6 +1302,12 @@ body::before {
   padding: 10px;
 }
 
+.create-queue-summary {
+  color: #8d98a9;
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .create-queue-list {
   display: grid;
   gap: 7px;
@@ -1310,7 +1316,7 @@ body::before {
 
 .create-queue-item {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) minmax(150px, 210px) auto;
+  grid-template-columns: 12px minmax(0, 1fr) minmax(150px, 210px) auto;
   align-items: center;
   gap: 8px;
   min-height: 50px;
@@ -1320,18 +1326,17 @@ body::before {
   background: rgba(255, 255, 255, 0.025);
 }
 
-.create-queue-thumb {
-  width: 38px;
-  height: 38px;
-  overflow: hidden;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.04);
+.create-queue-status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #f59e0b;
+  box-shadow: 0 0 0 5px rgba(245, 158, 11, 0.12);
 }
 
-.create-queue-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+.create-queue-status-dot.is-running {
+  background: #22c55e;
+  box-shadow: 0 0 0 5px rgba(34, 197, 94, 0.12);
 }
 
 .create-queue-meta,
@@ -1390,6 +1395,13 @@ body::before {
   background: rgba(255, 255, 255, 0.035);
   color: #b7c1d0;
   font-size: 11px;
+}
+
+.create-queue-state {
+  color: #8d98a9;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .create-results-panel {
@@ -3719,17 +3731,11 @@ body::before {
 }
 
 .create-queue-item {
-  grid-template-columns: 58px minmax(0, 1fr) minmax(220px, 32%) auto;
+  grid-template-columns: 12px minmax(0, 1fr) minmax(220px, 32%) auto;
   min-height: 70px;
   gap: 14px;
   padding: 9px;
   border-radius: 10px;
-}
-
-.create-queue-thumb {
-  width: 52px;
-  height: 52px;
-  border-radius: 9px;
 }
 
 .create-queue-progress i {
@@ -4067,15 +4073,17 @@ body::before {
   }
 
   .create-queue-item {
-    grid-template-columns: 48px minmax(0, 1fr) auto;
+    grid-template-columns: 12px minmax(0, 1fr) auto;
   }
 
   .create-queue-progress,
-  .create-queue-item button {
+  .create-queue-item button,
+  .create-queue-state {
     grid-column: 2 / -1;
   }
 
-  .create-queue-item button {
+  .create-queue-item button,
+  .create-queue-state {
     justify-self: start;
   }
 
@@ -4194,15 +4202,10 @@ body::before {
 }
 
 .create-queue-item {
-  grid-template-columns: 44px minmax(0, 1fr) minmax(180px, 30%) auto;
+  grid-template-columns: 12px minmax(0, 1fr) minmax(180px, 30%) auto;
   min-height: 46px;
   gap: 10px;
   padding: 6px;
-}
-
-.create-queue-thumb {
-  width: 38px;
-  height: 38px;
 }
 
 .create-results-panel {
@@ -4258,10 +4261,6 @@ body::before {
     min-height: 72px;
   }
 
-  .create-queue-thumb {
-    width: 56px;
-    height: 56px;
-  }
 }
 
 @media (max-width: 760px) {
@@ -4279,15 +4278,17 @@ body::before {
   }
 
   .create-queue-item {
-    grid-template-columns: 48px minmax(0, 1fr) auto;
+    grid-template-columns: 12px minmax(0, 1fr) auto;
   }
 
   .create-queue-progress,
-  .create-queue-item button {
+  .create-queue-item button,
+  .create-queue-state {
     grid-column: 2 / -1;
   }
 
-  .create-queue-item button {
+  .create-queue-item button,
+  .create-queue-state {
     justify-self: start;
   }
 
@@ -4455,15 +4456,10 @@ body::before {
 }
 
 .create-queue-item {
-  grid-template-columns: 58px minmax(0, 1fr) minmax(240px, 32%) auto !important;
+  grid-template-columns: 12px minmax(0, 1fr) minmax(240px, 32%) auto !important;
   min-height: 72px !important;
   gap: 14px !important;
   padding: 10px !important;
-}
-
-.create-queue-thumb {
-  width: 54px !important;
-  height: 54px !important;
 }
 
 .create-results-panel {
@@ -4582,13 +4578,8 @@ body::before {
   }
 
   .create-queue-item {
-    grid-template-columns: 50px minmax(0, 1fr) auto !important;
+    grid-template-columns: 12px minmax(0, 1fr) auto !important;
     min-height: 0 !important;
-  }
-
-  .create-queue-thumb {
-    width: 46px !important;
-    height: 46px !important;
   }
 
   .create-results-panel .image-pro-task-card > .relative.bg-white > .flex {
@@ -5124,11 +5115,6 @@ html[data-theme='light'] .console-modal .ant-select-selector {
   width: 16px !important;
   height: 16px !important;
   flex: 0 0 auto;
-}
-
-/* Create page: reference upload owns attachments, queue is temporarily hidden. */
-.create-queue-panel {
-  display: none !important;
 }
 
 .create-reference-empty {

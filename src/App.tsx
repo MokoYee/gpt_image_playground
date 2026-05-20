@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react'
-import { addImageFromFile, initStore, resetAuthenticatedDraft, syncServerHistory, useStore } from './store'
+import { addImageFromFile, cancelQueuedTask, initStore, resetAuthenticatedDraft, syncServerHistory, useStore } from './store'
 import { buildSettingsFromUrlParams, clearUrlSettingParams, hasUrlSettingParams } from './lib/urlSettings'
 import { useDockerApiUrlMigrationNotice } from './hooks/useDockerApiUrlMigrationNotice'
 import TaskGrid from './components/TaskGrid'
@@ -35,9 +35,18 @@ function getCreateModelOption(model: string): CreateModelOption {
   return CREATE_MODEL_OPTIONS.find((option) => CREATE_MODEL_ALIASES[option].includes(model)) ?? 'image-2'
 }
 
-function formatQueueTime(task: TaskRecord) {
-  if (task.elapsed != null && task.elapsed > 0) return `${Math.max(1, Math.round(task.elapsed / 1000))}秒`
-  return '00:18'
+function formatTaskRuntime(task: TaskRecord) {
+  const startedAt = task.createdAt || Date.now()
+  const elapsedMs = task.elapsed ?? Math.max(0, Date.now() - startedAt)
+  const seconds = Math.max(1, Math.round(elapsedMs / 1000))
+  if (seconds < 60) return `${seconds}秒`
+  return `${Math.floor(seconds / 60)}分${seconds % 60}秒`
+}
+
+function formatQueueMeta(task: TaskRecord) {
+  const quality = task.params.quality === 'high' ? '高质量' : '标准'
+  const size = task.params.size || '默认尺寸'
+  return [task.apiModel || task.apiProfileName || '当前配置', size, quality].join(' · ')
 }
 
 function CreateSectionIcon({ type }: { type: 'grid' | 'download' | 'rerun' | 'delete' }) {
@@ -84,38 +93,39 @@ function CreateQueuePanel() {
   const tasks = useStore((state) => state.tasks)
   const activeTasks = tasks
     .filter((task) => task.status === 'queued' || task.status === 'running')
-    .sort((a, b) => b.createdAt - a.createdAt)
-    .slice(0, 2)
+    .sort((a, b) => {
+      if (a.status !== b.status) return a.status === 'running' ? -1 : 1
+      return a.createdAt - b.createdAt
+    })
+
+  if (activeTasks.length === 0) return null
 
   return (
     <section className="create-queue-panel" data-no-drag-select>
       <div className="create-section-header">
-        <h2>生成队列（{activeTasks.length || 2}）</h2>
-        <div className="create-section-tools" aria-hidden="true">
-          <span><CreateSectionIcon type="grid" /></span>
-          <span><CreateSectionIcon type="rerun" /></span>
-          <span><CreateSectionIcon type="download" /></span>
-        </div>
+        <h2>生成队列（{activeTasks.length}）</h2>
+        <span className="create-queue-summary">
+          {activeTasks.filter((task) => task.status === 'running').length} 个生成中
+        </span>
       </div>
       <div className="create-queue-list">
-        {(activeTasks.length ? activeTasks : [
-          { id: 'sample-a', prompt: '赛博朋克女战士', status: 'running', params: { size: '16:9', quality: 'high' }, elapsed: 18000 },
-          { id: 'sample-b', prompt: '未来城市全景', status: 'queued', params: { size: '16:9', quality: 'high' }, elapsed: null },
-        ] as unknown as TaskRecord[]).map((task, index) => (
+        {activeTasks.map((task) => (
           <article key={task.id} className="create-queue-item">
-            <div className="create-queue-thumb">
-              <img src={index === 0 ? '/design-reference/create-reference.png' : '/auth-portal-pro.png'} alt="" />
-            </div>
+            <div className={`create-queue-status-dot is-${task.status}`} aria-hidden="true" />
             <div className="create-queue-meta">
               <strong>{task.prompt || '未命名任务'}</strong>
-              <span>灵境 XL Pro · {task.params.size || '16:9'} · {task.params.quality === 'high' ? '高质量' : '标准'} · 30秒</span>
+              <span>{formatQueueMeta(task)}</span>
             </div>
             <div className="create-queue-progress">
-              <span>{task.status === 'queued' ? '排队中' : `预计剩余 ${formatQueueTime(task)}`}</span>
-              <i><b style={{ width: task.status === 'queued' ? '18%' : '60%' }} /></i>
-              <em>{task.status === 'queued' ? '2/2' : '60%'}</em>
+              <span>{task.status === 'queued' ? '排队中' : `生成中 · ${formatTaskRuntime(task)}`}</span>
+              <i><b style={{ width: task.status === 'queued' ? '18%' : '62%' }} /></i>
+              <em>{task.status === 'queued' && task.queuePosition ? `第 ${task.queuePosition} 位` : task.status === 'queued' ? '等待调度' : '处理中'}</em>
             </div>
-            <button type="button">取消</button>
+            {task.status === 'queued' && task.serverTaskId ? (
+              <button type="button" onClick={() => cancelQueuedTask(task)}>取消</button>
+            ) : (
+              <span className="create-queue-state">{task.status === 'queued' ? '本地任务' : '运行中'}</span>
+            )}
           </article>
         ))}
       </div>
@@ -402,6 +412,7 @@ export default function App() {
       >
         <InputBar variant="create" />
         <CreateReferenceModelRow />
+        <CreateQueuePanel />
         <CreateResultsPanel />
       </CreateShell>
       <DetailModal />
