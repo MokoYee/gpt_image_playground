@@ -93,10 +93,12 @@ export async function createProtectedImageLink(fileId: string): Promise<string> 
 }
 
 export async function createImageTask(opts: CallApiOptions & { localTaskId: string }) {
+  const profile = getActiveApiProfile(opts.settings)
   return authedJson<{ taskId: string; status: ServerImageTask['status']; queue: { queued: number; running: number } }>('/api/images/tasks', {
     method: 'POST',
     body: JSON.stringify({
       localTaskId: opts.localTaskId,
+      model: profile.model,
       prompt: opts.prompt,
       params: opts.params,
       inputImageDataUrls: opts.inputImageDataUrls,
@@ -142,6 +144,7 @@ export async function readAdminImageTasks(params: URLSearchParams = new URLSearc
 
 export async function callImageApi(opts: CallApiOptions): Promise<CallApiResult> {
   if (getAuthToken()) {
+    const profile = getActiveApiProfile(opts.settings)
     const response = await fetch('/api/images/generate', {
       method: 'POST',
       headers: {
@@ -149,6 +152,7 @@ export async function callImageApi(opts: CallApiOptions): Promise<CallApiResult>
         Authorization: `Bearer ${getAuthToken()}`,
       },
       body: JSON.stringify({
+        model: profile.model,
         prompt: opts.prompt,
         params: opts.params,
         inputImageDataUrls: opts.inputImageDataUrls,

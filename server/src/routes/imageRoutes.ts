@@ -23,6 +23,7 @@ const TaskParamsSchema = z.object({
 
 const GenerateSchema = z.object({
   localTaskId: z.string().trim().min(1).max(120).optional(),
+  model: z.enum(['image-1', 'image-1.5', 'image-2']).optional(),
   prompt: z.string().trim().min(1),
   params: TaskParamsSchema,
   inputImageDataUrls: z.array(z.string().startsWith('data:')).default([]),
@@ -159,6 +160,11 @@ async function createQueuedTask(app: FastifyInstance, userId: string, body: z.in
   const settings = await readSystemSettings(app.context.db)
   if (!settings.defaultModel) throw badRequest('管理员尚未配置启用的默认模型服务')
   const defaultModel = settings.defaultModel
+  const requestedModel = body.model ?? 'image-2'
+  const selectedModel = settings.models.find((model) => model.enabled && model.model === requestedModel) ?? {
+    ...defaultModel,
+    model: requestedModel,
+  }
   if (body.localTaskId) {
     const existing = await app.context.db.query<{ id: string; status: string }>(
       'select id::text, status from image_tasks where user_id = $1 and local_task_id = $2',
@@ -211,8 +217,8 @@ async function createQueuedTask(app: FastifyInstance, userId: string, body: z.in
         body.localTaskId ?? null,
         body.prompt,
         JSON.stringify(body.params),
-        defaultModel.provider,
-        defaultModel.model,
+        selectedModel.provider,
+        selectedModel.model,
         lockedEstimatedCredits,
         body.params.n,
       ],

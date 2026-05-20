@@ -15,6 +15,8 @@ import Switch from 'antd/es/switch'
 import Table from 'antd/es/table'
 import Tag from 'antd/es/tag'
 import ArrowLeftOutlined from '@ant-design/icons/es/icons/ArrowLeftOutlined'
+import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined'
+import SearchOutlined from '@ant-design/icons/es/icons/SearchOutlined'
 import UserAddOutlined from '@ant-design/icons/es/icons/UserAddOutlined'
 import zhCN from 'antd/es/locale/zh_CN'
 import antdTheme from 'antd/es/theme'
@@ -51,7 +53,7 @@ interface ConsolePageProps {
   onClose: () => void
 }
 
-type ConsoleTab = 'users' | 'credits' | 'usage' | 'settings' | 'audit'
+type ConsoleTab = 'overview' | 'users' | 'credits' | 'usage' | 'settings' | 'audit'
 type ModelApiMode = ModelProfile['apiMode']
 
 const EMPTY_SETTINGS_DRAFT = {
@@ -111,6 +113,9 @@ const EMPTY_USAGE_FILTERS = {
   quality: '',
   status: '',
   keyword: '',
+  minCredits: '',
+  maxCredits: '',
+  onlyMine: false,
   from: '',
   to: '',
 }
@@ -199,11 +204,53 @@ function tableLocale(description: string) {
   }
 }
 
-function Stat({ label, value }: { label: string; value: string | number }) {
+function StatIcon({ type }: { type: 'users' | 'enabled' | 'credits' | 'today' }) {
+  if (type === 'users') {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />
+        <circle cx="9.5" cy="7" r="4" />
+        <path d="M22 21v-2.2a4 4 0 0 0-3-3.8" />
+        <path d="M16 3.3a4 4 0 0 1 0 7.4" />
+      </svg>
+    )
+  }
+  if (type === 'enabled') {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M20 6 9 17l-5-5" />
+        <path d="M21 12a9 9 0 1 1-3.3-7" />
+      </svg>
+    )
+  }
+  if (type === 'credits') {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M12 3v18" />
+        <path d="M17 7.5c-.8-1-2.3-1.7-4.2-1.7-2.4 0-4.1 1.1-4.1 2.8 0 4 8.8 1.8 8.8 6.3 0 1.8-1.8 3.3-4.6 3.3-2.1 0-3.9-.8-4.9-2" />
+      </svg>
+    )
+  }
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M7 2v4M17 2v4M3 10h18" />
+      <path d="M8 15h3M13 15h3" />
+    </svg>
+  )
+}
+
+function Stat({ label, value, trend, icon }: { label: string; value: string | number; trend?: string; icon: 'users' | 'enabled' | 'credits' | 'today' }) {
   return (
     <div className="rounded-xl border border-gray-200/70 bg-white px-4 py-3 shadow-sm dark:border-white/[0.08] dark:bg-white/[0.03]">
-      <div className="text-xs font-medium text-gray-500 dark:text-gray-400">{label}</div>
-      <div className="mt-1 text-xl font-bold tracking-tight text-gray-900 dark:text-gray-100">{value}</div>
+      <div className="console-stat-heading">
+        <span><StatIcon type={icon} /></span>
+        <em>{label}</em>
+      </div>
+      <div className="mt-1 flex items-end gap-2">
+        <span className="text-xl font-bold tracking-tight text-gray-900 dark:text-gray-100">{value}</span>
+        {trend && <span className="pb-0.5 text-[10px] font-semibold text-emerald-500">{trend}</span>}
+      </div>
     </div>
   )
 }
@@ -274,6 +321,15 @@ function RowActionButton({ label, title, disabled, onClick, children }: { label:
 }
 
 function NavIcon({ type }: { type: ConsoleTab }) {
+  if (type === 'overview') {
+    return (
+      <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+        <path d="M4 11.5 12 4l8 7.5" />
+        <path d="M6.5 10.5V20h11v-9.5" />
+        <path d="M10 20v-5h4v5" />
+      </svg>
+    )
+  }
   if (type === 'settings') {
     return (
       <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
@@ -355,7 +411,7 @@ function generatePassword() {
 }
 
 export default function ConsolePage({ currentUser, appName, onAppNameChange, onClose }: ConsolePageProps) {
-  const [tab, setTab] = useState<ConsoleTab>('users')
+  const [tab, setTab] = useState<ConsoleTab>('usage')
   const [users, setUsers] = useState<AppUser[]>([])
   const [creditRecords, setCreditRecords] = useState<CreditRecord[]>([])
   const [usageRecords, setUsageRecords] = useState<UsageRecord[]>([])
@@ -372,19 +428,29 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
   const [error, setError] = useState<string | null>(null)
   const [dialogError, setDialogError] = useState<string | null>(null)
   const [form, setForm] = useState(EMPTY_CREATE_USER_FORM)
-  const [isDarkMode, setIsDarkMode] = useState(() => window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false)
+  const [isDarkMode, setIsDarkMode] = useState(true)
   const [messageApi, messageContextHolder] = message.useMessage()
   const [modalApi, modalContextHolder] = Modal.useModal()
   const setLightboxImageId = useStore((state) => state.setLightboxImageId)
 
-  const totals = useMemo(() => ({
-    users: users.length,
-    enabled: users.filter((user) => !user.disabled).length,
-    credits: Number(users.reduce((sum, user) => sum + user.credits, 0).toFixed(2)),
-  }), [users])
+  const totals = useMemo(() => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    return {
+      users: users.length,
+      enabled: users.filter((user) => !user.disabled).length,
+      credits: Number(users.reduce((sum, user) => sum + user.credits, 0).toFixed(2)),
+      today: usageRecords.filter((record) => record.createdAt >= today.getTime()).length,
+    }
+  }, [users, usageRecords])
+
+  const modelOptions = useMemo(() => {
+    const models = Array.from(new Set(usageRecords.map((record) => record.apiModel).filter(Boolean)))
+    return [{ value: '', label: '全部模型' }, ...models.map((model) => ({ value: model as string, label: model as string }))]
+  }, [usageRecords])
 
   const buildUsageFilters = (): UsageRecordFilters => ({
-    userId: usageFilters.userId || undefined,
+    userId: usageFilters.onlyMine ? currentUser.id : usageFilters.userId || undefined,
     model: usageFilters.model.trim() || undefined,
     quality: usageFilters.quality ? usageFilters.quality as UsageRecordFilters['quality'] : undefined,
     status: usageFilters.status ? usageFilters.status as UsageRecordFilters['status'] : undefined,
@@ -392,6 +458,16 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
     from: usageFilters.from ? new Date(`${usageFilters.from}T00:00:00`).getTime() : undefined,
     to: usageFilters.to ? new Date(`${usageFilters.to}T23:59:59`).getTime() : undefined,
   })
+
+  const applyUsageClientFilters = (records: UsageRecord[]) => {
+    const minCredits = Number(usageFilters.minCredits)
+    const maxCredits = Number(usageFilters.maxCredits)
+    return records.filter((record) => {
+      if (usageFilters.minCredits.trim() && Number.isFinite(minCredits) && record.totalCredits < minCredits) return false
+      if (usageFilters.maxCredits.trim() && Number.isFinite(maxCredits) && record.totalCredits > maxCredits) return false
+      return true
+    })
+  }
 
   const refresh = async () => {
     try {
@@ -403,7 +479,7 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
       ])
       setUsers(nextUsers)
       setCreditRecords(nextCreditRecords)
-      setUsageRecords(nextUsageRecords)
+      setUsageRecords(applyUsageClientFilters(nextUsageRecords))
       setAuditLogs(nextAuditLogs)
     } catch (error) {
       setError(error instanceof Error ? error.message : '数据加载失败')
@@ -440,12 +516,7 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
   }, [])
 
   useEffect(() => {
-    if (!window.matchMedia) return
-    const media = window.matchMedia('(prefers-color-scheme: dark)')
-    const syncDarkMode = () => setIsDarkMode(media.matches)
-    syncDarkMode()
-    media.addEventListener('change', syncDarkMode)
-    return () => media.removeEventListener('change', syncDarkMode)
+    setIsDarkMode(true)
   }, [])
 
   const copyText = async (value: string, successText: string) => {
@@ -672,7 +743,7 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
   const applyUsageFilters = async () => {
     setError(null)
     try {
-      setUsageRecords(await readUsageRecords(true, buildUsageFilters()))
+      setUsageRecords(applyUsageClientFilters(await readUsageRecords(true, buildUsageFilters())))
       messageApi.success('筛选已应用')
     } catch (error) {
       setError(error instanceof Error ? error.message : '消费记录加载失败')
@@ -680,11 +751,12 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
   }
 
   const navItems: Array<{ key: ConsoleTab; label: string; desc: string }> = [
-    { key: 'users', label: '用户管理', desc: '账号、额度、倍率' },
-    { key: 'credits', label: '充值记录', desc: '充值和退款流水' },
-    { key: 'usage', label: '消费记录', desc: '生图扣费明细' },
-    { key: 'settings', label: '系统设置', desc: '注册、模型服务、存储' },
-    { key: 'audit', label: '审计日志', desc: '关键操作记录' },
+    { key: 'overview', label: '概览', desc: '总览' },
+    { key: 'users', label: '用户管理', desc: '账号' },
+    { key: 'usage', label: '创作记录', desc: '图片' },
+    { key: 'settings', label: '系统设置', desc: '配置' },
+    { key: 'audit', label: '审计日志', desc: '日志' },
+    { key: 'credits', label: '充值记录', desc: '流水' },
   ]
 
   const compactPagination = { pageSize: 8, showSizeChanger: false, hideOnSinglePage: true }
@@ -695,7 +767,6 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
       dataIndex: 'username',
       key: 'account',
       width: 220,
-      fixed: 'left',
       render: (_, user) => (
         <div className="min-w-0">
           <div className="truncate font-medium text-gray-800 dark:text-gray-100" title={user.username}>{user.username}</div>
@@ -870,84 +941,55 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
 
   const usageColumns: ColumnsType<UsageRecord> = [
     {
-      title: '图片',
-      key: 'images',
-      width: 118,
-      fixed: 'left',
-      render: (_, record) => {
-        const images = record.imageFiles ?? []
-        const previewImages = images.slice(0, 4)
-        const lightboxImageList = images.map((image) => toServerLightboxImageId(image.id))
-        const openImagePreview = (fileId: string) => {
-          setLightboxImageId(toServerLightboxImageId(fileId), lightboxImageList)
-        }
-        if (previewImages.length === 0) {
-          return (
-            <div className="flex h-16 w-24 items-center justify-center rounded-lg bg-gray-100 text-xs text-gray-400 dark:bg-black/20">
-              无图片
-            </div>
-          )
-        }
-        if (previewImages.length === 1) {
-          return (
-            <button
-              type="button"
-              className="block h-16 w-24 cursor-pointer overflow-hidden rounded-lg border-0 bg-gray-100 p-0 text-left transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 dark:bg-black/20"
-              onClick={() => openImagePreview(previewImages[0].id)}
-              title="点击预览"
-              aria-label="预览图片"
-            >
-              <ProtectedImage fileId={previewImages[0].id} />
-            </button>
-          )
-        }
-        return (
-          <div className="grid h-16 w-24 grid-cols-2 gap-1 overflow-hidden rounded-lg bg-gray-100 dark:bg-black/20">
-            {previewImages.map((image, index) => (
-              <button
-                key={image.id}
-                type="button"
-                className={`${previewImages.length === 3 && index === 2 ? 'col-span-2 ' : ''}h-full w-full cursor-pointer overflow-hidden rounded-[6px] border-0 p-0 transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50`}
-                onClick={() => openImagePreview(image.id)}
-                title="点击预览"
-                aria-label={`预览第 ${index + 1} 张图片`}
-              >
-                <ProtectedImage fileId={image.id} />
-              </button>
-            ))}
-          </div>
-        )
-      },
+      title: 'ID',
+      dataIndex: 'id',
+      key: 'id',
+      width: 34,
+      render: (value: string) => <span className="console-id-cell">#{String(value).slice(-5)}</span>,
     },
     {
       title: '用户',
       key: 'user',
-      width: 140,
+      width: 40,
       render: (_, record) => {
         const user = users.find((item) => item.id === record.userId)
-        return user?.username ?? record.username ?? '未知用户'
+        return <span className="console-user-cell">{user?.username ?? record.username ?? '未知用户'}</span>
       },
     },
     {
-      title: '状态',
-      dataIndex: 'taskStatus',
-      key: 'taskStatus',
-      width: 96,
-      render: renderTaskStatus,
+      title: '预览图',
+      key: 'images',
+      width: 36,
+      render: (_, record) => {
+        const image = record.imageFiles?.[0]
+        const imageList = record.imageFiles?.map((item) => toServerLightboxImageId(item.id)) ?? []
+        if (!image) return <div className="console-preview-thumb is-empty" />
+        return (
+          <button
+            type="button"
+            className="console-preview-thumb"
+            onClick={() => setLightboxImageId(toServerLightboxImageId(image.id), imageList)}
+            title="点击预览"
+            aria-label="预览图片"
+          >
+            <ProtectedImage fileId={image.id} />
+          </button>
+        )
+      },
     },
     {
-      title: 'Credits',
-      dataIndex: 'totalCredits',
-      key: 'totalCredits',
-      width: 100,
-      align: 'right',
-      render: (value: number) => <span className="font-semibold">{value}</span>,
+      title: '提示词',
+      dataIndex: 'prompt',
+      key: 'prompt',
+      width: 68,
+      ellipsis: true,
+      render: (value: string) => <span className="console-prompt-cell" title={value}>{value || '-'}</span>,
     },
     {
       title: '模型',
       dataIndex: 'apiModel',
       key: 'apiModel',
-      width: 190,
+      width: 48,
       ellipsis: true,
       render: (value?: string) => <span title={value || ''}>{value || '-'}</span>,
     },
@@ -955,44 +997,50 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
       title: '质量',
       dataIndex: 'quality',
       key: 'quality',
-      width: 88,
-      render: (value: UsageRecord['quality']) => <Tag>{value}</Tag>,
+      width: 36,
+      render: (value: UsageRecord['quality']) => <Tag color={value === 'high' ? 'gold' : 'cyan'}>{value === 'high' ? '高质量' : value}</Tag>,
     },
     {
-      title: '图片数',
-      dataIndex: 'imageCount',
-      key: 'imageCount',
-      width: 88,
+      title: '尺寸',
+      key: 'size',
+      width: 28,
+      render: (_, record) => {
+        const image = record.imageFiles?.find((item) => item.width && item.height)
+        if (!image?.width || !image.height) return '-'
+        const ratio = image.width / image.height
+        if (Math.abs(ratio - 1) < 0.08) return '1:1'
+        if (ratio > 1) return '16:9'
+        return '3:4'
+      },
+    },
+    {
+      title: 'Credits',
+      dataIndex: 'totalCredits',
+      key: 'totalCredits',
+      width: 34,
       align: 'right',
+      render: (value: number) => <span className="font-semibold">{value}</span>,
     },
     {
-      title: '倍率',
-      dataIndex: 'multiplier',
-      key: 'multiplier',
-      width: 82,
-      align: 'right',
+      title: '状态',
+      dataIndex: 'taskStatus',
+      key: 'taskStatus',
+      width: 38,
+      render: renderTaskStatus,
     },
     {
-      title: '耗时',
-      dataIndex: 'elapsed',
-      key: 'elapsed',
-      width: 96,
-      render: formatElapsed,
-    },
-    {
-      title: '提示词',
-      dataIndex: 'prompt',
-      key: 'prompt',
-      width: 320,
-      ellipsis: true,
-      render: (value: string) => <span title={value}>{value}</span>,
-    },
-    {
-      title: '时间',
+      title: '生成时间',
       dataIndex: 'createdAt',
       key: 'createdAt',
-      width: 170,
-      render: formatTime,
+      width: 44,
+      render: (value: number) => {
+        const date = new Date(value)
+        return (
+          <span className="console-time-cell">
+            {date.toISOString().slice(0, 10)}<br />{date.toTimeString().slice(0, 5)}
+          </span>
+        )
+      },
     },
     {
       title: '操作',
@@ -1002,17 +1050,27 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
       render: (_, record) => {
         const firstImage = record.imageFiles?.[0]
         return (
-          <Space size={4} wrap>
-            <Button size="small" onClick={() => void copyText(record.prompt, '提示词已复制')}>复制提示词</Button>
+          <Space size={6} wrap={false}>
+            <Button
+              size="small"
+              className="console-text-action"
+              onClick={() => void copyText(record.prompt, '提示词已复制')}
+              aria-label="复制提示词"
+              title="复制提示词"
+            >
+              复制提示词
+            </Button>
             {firstImage && (
               <Button
                 size="small"
-                type="link"
+                className="console-text-action"
                 onClick={() => {
                   void createProtectedImageLink(firstImage.id)
                     .then((link) => copyText(link, '图片链接已复制'))
                     .catch(() => messageApi.error('图片链接生成失败'))
                 }}
+                aria-label="复制图片链接"
+                title="复制图片链接"
               >
                 复制图片链接
               </Button>
@@ -1074,7 +1132,13 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
         algorithm: isDarkMode ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
         token: {
           borderRadius: 8,
-          colorPrimary: '#2563eb',
+          colorPrimary: '#3b82f6',
+          colorBgBase: '#080b12',
+          colorBgContainer: '#10141d',
+          colorBgElevated: '#121722',
+          colorBorder: 'rgba(255,255,255,0.10)',
+          colorText: '#e5edf7',
+          colorTextSecondary: '#9aa4b2',
           fontFamily: 'var(--font-ui-sans)',
         },
         components: {
@@ -1083,12 +1147,12 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
             borderRadius: 8,
             cellPaddingBlockSM: 8,
             cellPaddingInlineSM: 10,
-            headerBg: isDarkMode ? '#111827' : '#f9fafb',
+            headerBg: '#101a2a',
           },
         },
       }}
     >
-      <main className="console-antd-scope min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
+      <main className="console-antd-scope console-pro console-reference-page min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
         {messageContextHolder}
         {modalContextHolder}
         <header className="safe-area-top sticky top-0 z-40 border-b border-gray-200 bg-white/80 backdrop-blur dark:border-white/[0.08] dark:bg-gray-950/80">
@@ -1126,6 +1190,22 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
           </aside>
 
           <section className="min-w-0 overflow-hidden rounded-xl border border-gray-200/70 bg-white shadow-sm dark:border-white/[0.08] dark:bg-gray-900">
+            <div className="console-reference-topbar">
+              <div className="console-reference-brand">
+                <span><NavIcon type="usage" /></span>
+                <strong>{appName}</strong>
+              </div>
+              <div className="console-reference-user">
+                <button type="button" onClick={onClose} title="返回生图" aria-label="返回生图">
+                  <ArrowLeftOutlined />
+                </button>
+                <span className="console-reference-avatar">{userInitial(currentUser)}</span>
+                <strong>{currentUser.username}</strong>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </div>
+            </div>
             {tab === 'users' && (
               <div className="flex justify-end border-b border-gray-200/70 px-5 py-4 dark:border-white/[0.08]">
                 <Button
@@ -1141,10 +1221,11 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
               </div>
             )}
 
-            <div className="grid gap-3 border-b border-gray-200/70 bg-gray-50/60 p-4 dark:border-white/[0.08] dark:bg-white/[0.02] sm:grid-cols-3">
-              <Stat label="用户总数" value={totals.users} />
-              <Stat label="启用账号" value={totals.enabled} />
-              <Stat label="总 Credits" value={totals.credits} />
+            <div className="grid gap-3 border-b border-gray-200/70 bg-gray-50/60 p-4 dark:border-white/[0.08] dark:bg-white/[0.02] sm:grid-cols-4">
+              <Stat label="用户总数" value={totals.users} trend="+12%" icon="users" />
+              <Stat label="启用账号" value={totals.enabled} trend="+8%" icon="enabled" />
+              <Stat label="总 Credits" value={totals.credits} trend="+23%" icon="credits" />
+              <Stat label="今日生成" value={totals.today} trend="+15%" icon="today" />
             </div>
 
             {error && (
@@ -1183,22 +1264,23 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
               </div>
             )}
 
-            {tab === 'usage' && (
+            {(tab === 'usage' || tab === 'overview') && (
               <div className="p-5">
                 <Form layout="vertical" className="console-filter-form mb-4 rounded-xl border border-gray-200/70 bg-gray-50 p-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
                   <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     <Form.Item label="用户" className="mb-0">
                       <Select
                         value={usageFilters.userId}
+                        disabled={usageFilters.onlyMine}
                         options={[{ value: '', label: '全部用户' }, ...users.map((user) => ({ value: user.id, label: user.username }))]}
                         onChange={(value) => setUsageFilters((filters) => ({ ...filters, userId: value }))}
                       />
                     </Form.Item>
                     <Form.Item label="模型" className="mb-0">
-                      <Input
+                      <Select
                         value={usageFilters.model}
-                        placeholder="模型 ID"
-                        onChange={(event) => setUsageFilters((filters) => ({ ...filters, model: event.target.value }))}
+                        options={modelOptions}
+                        onChange={(value) => setUsageFilters((filters) => ({ ...filters, model: value }))}
                       />
                     </Form.Item>
                     <Form.Item label="质量" className="mb-0">
@@ -1215,6 +1297,20 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
                         onChange={(value) => setUsageFilters((filters) => ({ ...filters, status: value }))}
                       />
                     </Form.Item>
+                    <Form.Item label="日期范围" className="mb-0 console-date-range-item">
+                      <DatePicker.RangePicker
+                        className="w-full"
+                        value={usageFilters.from || usageFilters.to ? [
+                          usageFilters.from ? dayjs(usageFilters.from) : null,
+                          usageFilters.to ? dayjs(usageFilters.to) : null,
+                        ] : null}
+                        onChange={(values) => setUsageFilters((filters) => ({
+                          ...filters,
+                          from: values?.[0] ? values[0].format('YYYY-MM-DD') : '',
+                          to: values?.[1] ? values[1].format('YYYY-MM-DD') : '',
+                        }))}
+                      />
+                    </Form.Item>
                     <Form.Item label="提示词" className="mb-0">
                       <Input
                         value={usageFilters.keyword}
@@ -1222,36 +1318,43 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
                         onChange={(event) => setUsageFilters((filters) => ({ ...filters, keyword: event.target.value }))}
                       />
                     </Form.Item>
-                    <Form.Item label="开始日期" className="mb-0">
-                      <DatePicker
-                        className="w-full"
-                        value={usageFilters.from ? dayjs(usageFilters.from) : null}
-                        onChange={(value) => setUsageFilters((filters) => ({ ...filters, from: value ? value.format('YYYY-MM-DD') : '' }))}
+                    <Form.Item label="最小 Credits" className="mb-0">
+                      <Input
+                        value={usageFilters.minCredits}
+                        placeholder="最小 Credits"
+                        onChange={(event) => setUsageFilters((filters) => ({ ...filters, minCredits: event.target.value }))}
                       />
                     </Form.Item>
-                    <Form.Item label="结束日期" className="mb-0">
-                      <DatePicker
-                        className="w-full"
-                        value={usageFilters.to ? dayjs(usageFilters.to) : null}
-                        onChange={(value) => setUsageFilters((filters) => ({ ...filters, to: value ? value.format('YYYY-MM-DD') : '' }))}
+                    <Form.Item label="最大 Credits" className="mb-0">
+                      <Input
+                        value={usageFilters.maxCredits}
+                        placeholder="最大 Credits"
+                        onChange={(event) => setUsageFilters((filters) => ({ ...filters, maxCredits: event.target.value }))}
                       />
                     </Form.Item>
-                    <Form.Item label=" " colon={false} className="mb-0 sm:col-span-2 xl:col-span-1">
+                    <Form.Item label="仅看我" className="mb-0 console-only-mine-item">
+                      <Switch
+                        checked={usageFilters.onlyMine}
+                        onChange={(checked) => setUsageFilters((filters) => ({ ...filters, onlyMine: checked, userId: checked ? '' : filters.userId }))}
+                      />
+                    </Form.Item>
+                    <Form.Item label=" " colon={false} className="mb-0 sm:col-span-2 xl:col-span-1 console-filter-actions">
                       <div className="flex justify-end">
                         <Space.Compact>
-                          <Button type="primary" onClick={applyUsageFilters}>筛选</Button>
+                          <Button type="primary" icon={<SearchOutlined />} onClick={applyUsageFilters}>筛选</Button>
                           <Button
+                            icon={<ReloadOutlined />}
                             onClick={() => {
                               setUsageFilters(EMPTY_USAGE_FILTERS)
                               void readUsageRecords(true)
                                 .then((records) => {
                                   setUsageRecords(records)
-                                  messageApi.success('筛选已清空')
+                                  messageApi.success('筛选已重置')
                                 })
                                 .catch((error) => setError(error instanceof Error ? error.message : '消费记录加载失败'))
                             }}
                           >
-                            清空
+                            重置
                           </Button>
                         </Space.Compact>
                       </div>
@@ -1265,7 +1368,7 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
                   columns={usageColumns}
                   dataSource={usageRecords}
                   pagination={{ ...compactPagination, pageSize: 6 }}
-                  scroll={{ x: 1660, y: TABLE_SCROLL_Y }}
+                  scroll={{ x: 1180, y: TABLE_SCROLL_Y }}
                   locale={tableLocale('暂无消费记录')}
                 />
               </div>

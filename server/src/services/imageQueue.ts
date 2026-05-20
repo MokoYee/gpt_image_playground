@@ -19,6 +19,8 @@ interface QueuedTaskRow {
   user_id: string
   prompt: string
   params: TaskParams
+  api_provider: string
+  api_model: string
 }
 
 function baseCredits(quality: TaskParams['quality']): number {
@@ -111,7 +113,7 @@ export class ImageQueueWorker {
 
       const candidate = await client.query<QueuedTaskRow & { user_running: string; concurrency_limit: number | null }>(
         `
-          select t.id::text, t.user_id::text, t.prompt, t.params,
+          select t.id::text, t.user_id::text, t.prompt, t.params, t.api_provider, t.api_model,
                  w.concurrency_limit,
                  (
                    select count(*) from image_tasks running
@@ -143,6 +145,8 @@ export class ImageQueueWorker {
           user_id: row.user_id,
           prompt: row.prompt,
           params: mapParams(row.params),
+          api_provider: row.api_provider,
+          api_model: row.api_model,
         }
       }
 
@@ -154,7 +158,11 @@ export class ImageQueueWorker {
     const startedAt = Date.now()
     try {
       const settings = await readSystemSettings(this.pool)
-      const modelProfile = settings.defaultModel
+      const modelProfile = settings.models.find((model) =>
+        model.enabled &&
+        model.provider === task.api_provider &&
+        model.model === task.api_model
+      ) ?? (settings.defaultModel ? { ...settings.defaultModel, provider: task.api_provider as 'openai-compatible', model: task.api_model } : undefined)
       if (!modelProfile) throw new Error('管理员尚未配置启用的默认模型服务')
       const inputImages = await this.readTaskImages(task.id, 'upload')
       const maskImages = await this.readTaskImages(task.id, 'mask')
