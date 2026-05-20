@@ -100,6 +100,15 @@ function EyeOffIcon() {
   )
 }
 
+function EyeIcon() {
+  return (
+    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  )
+}
+
 function ModeButton({
   active,
   children,
@@ -128,6 +137,7 @@ export default function AuthPage({ appName, onAppNameChange, onAuthenticated }: 
   const [mode, setMode] = useState<AuthMode>('login')
   const [loginId, setLoginId] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
+  const [loginPasswordVisible, setLoginPasswordVisible] = useState(false)
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -258,7 +268,7 @@ export default function AuthPage({ appName, onAppNameChange, onAuthenticated }: 
                       value={loginId}
                       onChange={(event) => setLoginId(event.target.value)}
                       autoComplete="username"
-                      placeholder="codexuimocc5uyx@mail.com"
+                      placeholder="请输入用户名或邮箱"
                       className={inputClassName}
                     />
                     <FieldError message={errors.loginId} />
@@ -270,18 +280,21 @@ export default function AuthPage({ appName, onAppNameChange, onAuthenticated }: 
                     <input
                       value={loginPassword}
                       onChange={(event) => setLoginPassword(event.target.value)}
-                      type="password"
+                      type={loginPasswordVisible ? 'text' : 'password'}
                       autoComplete="current-password"
-                      placeholder="••••••••••••••••"
+                      placeholder="请输入密码"
                       className={inputClassName}
                     />
                     <button
                       type="button"
-                      className="absolute right-3 top-3 text-slate-500 transition hover:text-slate-200"
-                      aria-label="密码可见性"
+                      className="auth-password-toggle absolute right-3 top-3 text-slate-500 transition hover:text-slate-200"
+                      aria-label={loginPasswordVisible ? '隐藏密码' : '显示密码'}
+                      aria-pressed={loginPasswordVisible}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => setLoginPasswordVisible((visible) => !visible)}
                       tabIndex={-1}
                     >
-                      <EyeOffIcon />
+                      {loginPasswordVisible ? <EyeIcon /> : <EyeOffIcon />}
                     </button>
                     <FieldError message={errors.loginPassword} />
                   </label>

@@ -2449,7 +2449,7 @@ body::before {
   color: #8c92a6 !important;
 }
 
-.auth-login-form label button[aria-label="密码可见性"] {
+.auth-login-form label .auth-password-toggle {
   top: 18px !important;
   color: #8c92a6 !important;
 }
@@ -2719,7 +2719,7 @@ body::before {
   }
 
   .auth-login-form label > span:not(.sr-only),
-  .auth-login-form label button[aria-label="密码可见性"] {
+  .auth-login-form label .auth-password-toggle {
     top: 13px !important;
   }
 
