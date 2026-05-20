@@ -30,18 +30,69 @@ const MIME_MAP: Record<TaskParams['output_format'], string> = {
   jpeg: 'image/jpeg',
   webp: 'image/webp',
 }
+const MAX_UPSTREAM_ERROR_BODY_LENGTH = 4000
+const UPSTREAM_USER_AGENT = 'Mozilla/5.0 (compatible; gpt-image-playground/2.0)'
+const UPSTREAM_CLIENT_HEADERS = {
+  'User-Agent': UPSTREAM_USER_AGENT,
+}
 
 function buildApiUrl(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`
 }
 
+function truncateErrorBody(text: string): string {
+  const trimmed = text.trim()
+  if (trimmed.length <= MAX_UPSTREAM_ERROR_BODY_LENGTH) return trimmed
+  return `${trimmed.slice(0, MAX_UPSTREAM_ERROR_BODY_LENGTH)}\n... upstream response truncated`
+}
+
 async function getErrorMessage(response: Response): Promise<string> {
-  try {
-    const payload = await response.json() as any
-    return payload.error?.message || payload.detail || payload.message || `HTTP ${response.status}`
-  } catch {
-    return response.text().catch(() => `HTTP ${response.status}`)
+  const statusText = response.statusText ? ` ${response.statusText}` : ''
+  const prefix = `HTTP ${response.status}${statusText}`
+  const text = await response.text().catch(() => '')
+  if (!text.trim()) return prefix
+  return `${prefix}\n${truncateErrorBody(text)}`
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError'
+}
+
+function getErrorField(error: unknown, field: string): unknown {
+  return error && typeof error === 'object' && field in error ? (error as Record<string, unknown>)[field] : undefined
+}
+
+function formatErrorDetails(error: unknown): string {
+  const lines: string[] = []
+  const name = getErrorField(error, 'name')
+  const message = error instanceof Error ? error.message : String(error)
+  if (typeof name === 'string' && name) lines.push(`${name}: ${message}`)
+  else lines.push(message)
+
+  const cause = getErrorField(error, 'cause')
+  if (cause && typeof cause === 'object') {
+    const causeName = getErrorField(cause, 'name')
+    const causeMessage = getErrorField(cause, 'message')
+    const causeCode = getErrorField(cause, 'code')
+    const causeSyscall = getErrorField(cause, 'syscall')
+    const causeAddress = getErrorField(cause, 'address')
+    const causePort = getErrorField(cause, 'port')
+    const causeHost = getErrorField(cause, 'host') ?? getErrorField(cause, 'hostname')
+    const causeParts = [
+      typeof causeName === 'string' && causeName ? causeName : undefined,
+      typeof causeCode === 'string' && causeCode ? `code=${causeCode}` : undefined,
+      typeof causeSyscall === 'string' && causeSyscall ? `syscall=${causeSyscall}` : undefined,
+      typeof causeAddress === 'string' && causeAddress ? `address=${causeAddress}` : undefined,
+      typeof causeHost === 'string' && causeHost ? `host=${causeHost}` : undefined,
+      typeof causePort === 'number' || typeof causePort === 'string' ? `port=${causePort}` : undefined,
+    ].filter(Boolean)
+    if (causeParts.length) lines.push(`cause: ${causeParts.join(' ')}`)
+    if (typeof causeMessage === 'string' && causeMessage && causeMessage !== message) {
+      lines.push(`cause.message: ${causeMessage}`)
+    }
   }
+
+  return truncateErrorBody(lines.join('\n'))
 }
 
 function normalizeBase64Image(value: string, fallbackMime: string): string {
@@ -50,10 +101,14 @@ function normalizeBase64Image(value: string, fallbackMime: string): string {
 
 async function fetchImageAsDataUrl(url: string, fallbackMime: string, signal: AbortSignal): Promise<string> {
   if (url.startsWith('data:')) return url
-  const response = await fetch(url, { signal })
-  if (!response.ok) throw new Error(`图片下载失败：HTTP ${response.status}`)
-  const contentType = response.headers.get('content-type') || fallbackMime
-  return dataUrlFromBytes(await response.arrayBuffer(), contentType)
+  try {
+    const response = await fetch(url, { headers: UPSTREAM_CLIENT_HEADERS, signal })
+    if (!response.ok) throw new Error(`HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ''}`)
+    const contentType = response.headers.get('content-type') || fallbackMime
+    return dataUrlFromBytes(await response.arrayBuffer(), contentType)
+  } catch (error) {
+    throw new Error(`Image download failed\nurl=${url}\n${formatErrorDetails(error)}`)
+  }
 }
 
 function pickActualParams(source: any): Partial<TaskParams> {
@@ -117,6 +172,7 @@ export async function callImageProvider(settings: ImageApiSettings, request: Ima
       const response = await fetch(buildApiUrl(settings.baseUrl, 'responses'), {
         method: 'POST',
         headers: {
+          ...UPSTREAM_CLIENT_HEADERS,
           Authorization: `Bearer ${settings.apiKey}`,
           'Content-Type': 'application/json',
         },
@@ -170,7 +226,10 @@ export async function callImageProvider(settings: ImageApiSettings, request: Ima
       }
       const response = await fetch(buildApiUrl(settings.baseUrl, 'images/edits'), {
         method: 'POST',
-        headers: { Authorization: `Bearer ${settings.apiKey}` },
+        headers: {
+          ...UPSTREAM_CLIENT_HEADERS,
+          Authorization: `Bearer ${settings.apiKey}`,
+        },
         body: form,
         signal: controller.signal,
       })
@@ -181,6 +240,7 @@ export async function callImageProvider(settings: ImageApiSettings, request: Ima
     const response = await fetch(buildApiUrl(settings.baseUrl, 'images/generations'), {
       method: 'POST',
       headers: {
+        ...UPSTREAM_CLIENT_HEADERS,
         Authorization: `Bearer ${settings.apiKey}`,
         'Content-Type': 'application/json',
       },
@@ -199,6 +259,11 @@ export async function callImageProvider(settings: ImageApiSettings, request: Ima
     })
     if (!response.ok) throw new Error(await getErrorMessage(response))
     return parseImagesApiResponse(await response.json(), mime, controller.signal)
+  } catch (error) {
+    if (controller.signal.aborted || isAbortError(error)) {
+      throw new Error(`Request timed out after ${settings.timeoutSeconds}s`)
+    }
+    throw new Error(formatErrorDetails(error))
   } finally {
     clearTimeout(timeout)
   }

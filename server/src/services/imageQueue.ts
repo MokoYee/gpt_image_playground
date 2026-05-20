@@ -2,6 +2,7 @@ import type { DbClient, DbPool } from '../db.js'
 import { withTransaction } from '../db.js'
 import { callImageProvider, type TaskParams } from './imageProxy.js'
 import { readStoredImageAsDataUrl, storeImageFile } from './imageStorage.js'
+import { isModelProfileAvailable } from './modelProfiles.js'
 import { readSystemSettings, type ModelProfile } from './settings.js'
 
 const STUCK_RUNNING_MS = 15 * 60 * 1000
@@ -70,14 +71,6 @@ function providerKey(profile: ModelProfile) {
   return `${profile.id}:${profile.baseUrl}:${profile.model}:${profile.apiMode}`
 }
 
-function isDevelopmentOnlyProvider(profile: ModelProfile) {
-  try {
-    return new URL(profile.baseUrl).hostname === 'codex.xgood.xz.cn'
-  } catch {
-    return profile.baseUrl.includes('codex.xgood.xz.cn')
-  }
-}
-
 function isRetryableProviderError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error)
   return /fetch failed|failed to fetch|network|timeout|timed out|abort|aborted|econn|enotfound|etimedout|ehostunreach|enetunreach|socket|连接|超时|网络/i.test(message)
@@ -89,17 +82,16 @@ function formatProviderError(error: unknown) {
 
 function resolveTaskModelProfiles(settings: Awaited<ReturnType<typeof readSystemSettings>>, task: QueuedTaskRow, nodeEnv: string) {
   const candidates = MODEL_ALIAS_CANDIDATES[task.api_model] ?? [task.api_model]
-  const allowDevelopmentOnlyProviders = nodeEnv !== 'production'
   const profiles = settings.models.filter((model) =>
     model.enabled &&
     model.provider === task.api_provider &&
     candidates.includes(model.model) &&
-    (allowDevelopmentOnlyProviders || !isDevelopmentOnlyProvider(model))
+    isModelProfileAvailable(model, nodeEnv)
   )
   if (
     !profiles.length &&
     settings.defaultModel &&
-    (allowDevelopmentOnlyProviders || !isDevelopmentOnlyProvider(settings.defaultModel))
+    isModelProfileAvailable(settings.defaultModel, nodeEnv)
   ) {
     profiles.push({
       ...settings.defaultModel,

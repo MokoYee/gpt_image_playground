@@ -87,6 +87,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         model: z.string().trim().min(1).max(120),
         apiMode: z.enum(['images', 'responses']).default('images'),
         timeoutSeconds: z.coerce.number().int().min(10).max(900).default(120),
+        environment: z.enum(['all', 'development', 'production']).default('all'),
         enabled: z.boolean().default(true),
         isDefault: z.boolean().default(false),
       })).min(1).max(20),
@@ -102,26 +103,29 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       const keptIds: string[] = []
       for (const item of body.items) {
         const apiKey = item.apiKey?.trim() || (item.id ? existingKeys.get(item.id) : undefined) || null
+        if (item.enabled && item.isDefault && !apiKey) {
+          throw badRequest('默认模型必须配置 API Key')
+        }
         if (item.id) {
           keptIds.push(item.id)
           await client.query(
             `
               update model_profiles
               set name = $2, provider = $3, base_url = $4, api_key = $5, model = $6,
-                  api_mode = $7, timeout_seconds = $8, enabled = $9, is_default = $10,
-                  updated_at = now(), updated_by = $11
+                  api_mode = $7, timeout_seconds = $8, environment = $9, enabled = $10, is_default = $11,
+                  updated_at = now(), updated_by = $12
               where id = $1
             `,
-            [item.id, item.name, item.provider, item.baseUrl, apiKey, item.model, item.apiMode, item.timeoutSeconds, item.enabled, item.isDefault, request.user.id],
+            [item.id, item.name, item.provider, item.baseUrl, apiKey, item.model, item.apiMode, item.timeoutSeconds, item.environment, item.enabled, item.isDefault, request.user.id],
           )
         } else {
           const created = await client.query<{ id: string }>(
             `
-              insert into model_profiles (name, provider, base_url, api_key, model, api_mode, timeout_seconds, enabled, is_default, updated_by)
-              values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+              insert into model_profiles (name, provider, base_url, api_key, model, api_mode, timeout_seconds, environment, enabled, is_default, updated_by)
+              values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
               returning id::text
             `,
-            [item.name, item.provider, item.baseUrl, apiKey, item.model, item.apiMode, item.timeoutSeconds, item.enabled, item.isDefault, request.user.id],
+            [item.name, item.provider, item.baseUrl, apiKey, item.model, item.apiMode, item.timeoutSeconds, item.environment, item.enabled, item.isDefault, request.user.id],
           )
           keptIds.push(created.rows[0].id)
         }

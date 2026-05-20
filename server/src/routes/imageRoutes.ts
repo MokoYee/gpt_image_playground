@@ -9,6 +9,7 @@ import { withTransaction } from '../db.js'
 import { calculateCredits, refreshQueuePositions } from '../services/imageQueue.js'
 import { mapStoredFileRow, resolveStoredImagePath, storeImageFile } from '../services/imageStorage.js'
 import { readSystemSettings } from '../services/settings.js'
+import { isModelProfileAvailable } from '../services/modelProfiles.js'
 import { PaginationSchema, toOffset } from '../validators.js'
 import { writeAuditLog } from '../services/audit.js'
 
@@ -43,14 +44,6 @@ const MODEL_ALIAS_CANDIDATES: Record<string, string[]> = {
 
 function toMillis(value: unknown): number | null {
   return value instanceof Date ? value.getTime() : value ? new Date(String(value)).getTime() : null
-}
-
-function isDevelopmentOnlyModelProfile(profile: { baseUrl: string }) {
-  try {
-    return new URL(profile.baseUrl).hostname === 'codex.xgood.xz.cn'
-  } catch {
-    return profile.baseUrl.includes('codex.xgood.xz.cn')
-  }
 }
 
 function mapTask(row: any, images: any[] = []) {
@@ -175,21 +168,20 @@ async function authorizeImageFile(app: FastifyInstance, request: FastifyRequest,
 
 function resolveRequestedModel(settings: Awaited<ReturnType<typeof readSystemSettings>>, requestedModel: string, nodeEnv: string) {
   const candidates = MODEL_ALIAS_CANDIDATES[requestedModel] ?? [requestedModel]
-  const allowDevelopmentOnlyProfiles = nodeEnv !== 'production'
   const configuredModel = settings.models.find((model) =>
     model.enabled &&
     candidates.includes(model.model) &&
-    (allowDevelopmentOnlyProfiles || !isDevelopmentOnlyModelProfile(model))
+    isModelProfileAvailable(model, nodeEnv)
   )
   if (configuredModel) return configuredModel
   if (
     settings.defaultModel &&
     candidates.includes(settings.defaultModel.model) &&
-    (allowDevelopmentOnlyProfiles || !isDevelopmentOnlyModelProfile(settings.defaultModel))
+    isModelProfileAvailable(settings.defaultModel, nodeEnv)
   ) {
     return settings.defaultModel
   }
-  return settings.defaultModel && (allowDevelopmentOnlyProfiles || !isDevelopmentOnlyModelProfile(settings.defaultModel))
+  return settings.defaultModel && isModelProfileAvailable(settings.defaultModel, nodeEnv)
     ? { ...settings.defaultModel, model: requestedModel }
     : null
 }

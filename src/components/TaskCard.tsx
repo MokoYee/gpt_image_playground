@@ -208,6 +208,7 @@ export default function TaskCard({
   const showModel = task.apiModel && task.apiModel !== DEFAULT_IMAGES_MODEL
   const canRetry = task.status === 'error' || settings.alwaysShowRetryButton
   const canCancel = task.status === 'queued' && task.serverTaskId
+  const errorSummary = task.error?.trim().split('\n').find(Boolean) || '生成失败'
 
   return (
     <div className="image-pro-task-card relative rounded-xl">
@@ -380,7 +381,7 @@ export default function TaskCard({
             </div>
           )}
           {task.status === 'error' && (
-            <div className="flex flex-col items-center gap-1 px-2">
+            <div className="flex max-w-full flex-col items-center gap-1 px-3 text-center" title={task.error || '生成失败'}>
               <svg
                 className="w-7 h-7 text-red-400"
                 fill="none"
@@ -396,6 +397,9 @@ export default function TaskCard({
               </svg>
               <span className="text-xs text-red-400 text-center leading-tight">
                 失败
+              </span>
+              <span className="line-clamp-2 max-w-full break-words text-[11px] leading-snug text-red-400/80">
+                {errorSummary}
               </span>
             </div>
           )}

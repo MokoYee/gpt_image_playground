@@ -55,6 +55,7 @@ interface ConsolePageProps {
 
 type ConsoleTab = 'overview' | 'users' | 'credits' | 'usage' | 'settings' | 'audit'
 type ModelApiMode = ModelProfile['apiMode']
+type ModelEnvironment = ModelProfile['environment']
 
 const EMPTY_SETTINGS_DRAFT = {
   appName: '',
@@ -103,6 +104,7 @@ const DEFAULT_MODEL_DRAFT: ModelProfile = {
   model: 'gpt-image-2',
   apiMode: 'images',
   timeoutSeconds: 120,
+  environment: 'all',
   enabled: true,
   isDefault: true,
 }
@@ -140,6 +142,12 @@ const TASK_STATUS_OPTIONS = [
 const API_MODE_OPTIONS = [
   { value: 'images', label: 'Images' },
   { value: 'responses', label: 'Responses' },
+]
+
+const MODEL_ENVIRONMENT_OPTIONS = [
+  { value: 'all', label: '全部环境' },
+  { value: 'development', label: '仅开发' },
+  { value: 'production', label: '仅生产' },
 ]
 
 const TABLE_SCROLL_Y = 'min(52vh, 520px)'
@@ -731,10 +739,15 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
       setError('必须选择一个启用的默认模型')
       return
     }
-    const settings = await updateModelProfiles(modelDrafts.map((model) => {
+    const payload = modelDrafts.map((model) => {
       const apiKey = model.apiKey?.trim()
       return apiKey ? { ...model, apiKey } : { ...model, apiKey: undefined }
-    }))
+    })
+    if (payload.some((model) => model.enabled && model.isDefault && !model.id && !model.apiKey)) {
+      setError('默认模型必须配置 API Key')
+      return
+    }
+    const settings = await updateModelProfiles(payload)
     setSystemSettings(settings)
     setModelDrafts(settings.models)
     messageApi.success('模型服务已保存')
@@ -1405,22 +1418,24 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
                       onChange={(checked) => setSettingsDraft((draft) => ({ ...draft, registrationOpen: checked }))}
                     />
                   </Form.Item>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <Form.Item label="新用户默认 Credits">
-                      <Input
-                        value={settingsDraft.defaultCredits}
-                        placeholder={SETTINGS_PLACEHOLDERS.defaultCredits}
-                        onChange={(event) => setSettingsDraft({ ...settingsDraft, defaultCredits: event.target.value })}
-                      />
-                    </Form.Item>
-                    <Form.Item label="新用户默认倍率">
-                      <Input
-                        value={settingsDraft.defaultMultiplier}
-                        placeholder={SETTINGS_PLACEHOLDERS.defaultMultiplier}
-                        onChange={(event) => setSettingsDraft({ ...settingsDraft, defaultMultiplier: event.target.value })}
-                      />
-                    </Form.Item>
-                  </div>
+                  {settingsDraft.registrationOpen && (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Form.Item label="新用户默认 Credits">
+                        <Input
+                          value={settingsDraft.defaultCredits}
+                          placeholder={SETTINGS_PLACEHOLDERS.defaultCredits}
+                          onChange={(event) => setSettingsDraft({ ...settingsDraft, defaultCredits: event.target.value })}
+                        />
+                      </Form.Item>
+                      <Form.Item label="新用户默认倍率">
+                        <Input
+                          value={settingsDraft.defaultMultiplier}
+                          placeholder={SETTINGS_PLACEHOLDERS.defaultMultiplier}
+                          onChange={(event) => setSettingsDraft({ ...settingsDraft, defaultMultiplier: event.target.value })}
+                        />
+                      </Form.Item>
+                    </div>
+                  )}
                   <Button type="primary" onClick={saveAuthSettings}>保存注册设置</Button>
                 </Form>
               </section>
@@ -1474,12 +1489,15 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
                           <Input value={model.timeoutSeconds} onChange={(event) => setModelDrafts((items) => items.map((item, i) => i === index ? { ...item, timeoutSeconds: Math.max(10, Number(event.target.value) || 120) } : item))} placeholder="超时秒" />
                         </Form.Item>
                       </div>
-                      <div className="grid gap-3 md:grid-cols-[1fr_140px_120px_120px_auto]">
+                      <div className="grid gap-3 md:grid-cols-[1fr_140px_140px_120px_120px_auto]">
                         <Form.Item label="API Key">
                           <Input.Password value={model.apiKey ?? ''} onChange={(event) => setModelDrafts((items) => items.map((item, i) => i === index ? { ...item, apiKey: event.target.value } : item))} placeholder="留空保持原值" />
                         </Form.Item>
                         <Form.Item label="API 模式">
                           <Select value={model.apiMode} options={API_MODE_OPTIONS} onChange={(value) => setModelDrafts((items) => items.map((item, i) => i === index ? { ...item, apiMode: value as ModelApiMode } : item))} />
+                        </Form.Item>
+                        <Form.Item label="适用环境">
+                          <Select value={model.environment ?? 'all'} options={MODEL_ENVIRONMENT_OPTIONS} onChange={(value) => setModelDrafts((items) => items.map((item, i) => i === index ? { ...item, environment: value as ModelEnvironment } : item))} />
                         </Form.Item>
                         <Form.Item label="启用状态">
                           <Button block onClick={() => setModelDrafts((items) => items.map((item, i) => i === index ? { ...item, enabled: !item.enabled } : item))}>{model.enabled ? '启用' : '停用'}</Button>
