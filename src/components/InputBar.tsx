@@ -270,7 +270,11 @@ function useIsMobile() {
   return isMobile
 }
 
-export default function InputBar() {
+interface InputBarProps {
+  variant?: 'floating' | 'create'
+}
+
+export default function InputBar({ variant = 'floating' }: InputBarProps = {}) {
   const prompt = useStore((s) => s.prompt)
   const setPrompt = useStore((s) => s.setPrompt)
   const inputImages = useStore((s) => s.inputImages)
@@ -1589,6 +1593,175 @@ export default function InputBar() {
     </div>
   )
 
+  if (variant === 'create') {
+    return (
+      <>
+        {isDragging && (
+          <div className="fixed inset-0 z-[100] bg-white/60 dark:bg-gray-900/60 backdrop-blur-md flex flex-col items-center justify-center pointer-events-none">
+            <div className="flex flex-col items-center gap-4 p-8 rounded-3xl">
+              <div className={`w-20 h-20 rounded-full border-2 border-dashed flex items-center justify-center ${
+                atImageLimit ? 'bg-red-50 dark:bg-red-500/10 border-red-300' : 'bg-blue-50 dark:bg-blue-500/10 border-blue-400'
+              }`}>
+                {atImageLimit ? (
+                  <svg className="w-10 h-10 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                  </svg>
+                ) : (
+                  <svg className="w-10 h-10 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                )}
+              </div>
+              <div className="text-center">
+                {atImageLimit ? (
+                  <>
+                    <p className="text-lg font-semibold text-red-500">已达上限 {API_MAX_IMAGES} 张</p>
+                    <p className="text-sm text-gray-400 mt-1">请先移除部分参考图后再添加</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-lg font-semibold text-gray-700 dark:text-gray-200">释放以添加参考图</p>
+                    <p className="text-sm text-gray-400 mt-1">支持 JPG、PNG、WebP 等格式</p>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showSizePicker && (
+          <SizePickerModal
+            currentSize={params.size}
+            onSelect={(size) => setParams({ size })}
+            onClose={() => setShowSizePicker(false)}
+            allowAuto
+          />
+        )}
+
+        <div data-input-bar className="image-pro-inputbar create-inputbar">
+          <div ref={cardRef} className="image-pro-composer create-prompt-panel">
+            <div className="create-prompt-editor">
+              {showAtImageMenu && (
+                <div style={{ left: `${menuLeft}px` }} className="absolute bottom-full z-50 mb-2 w-64 overflow-hidden rounded-2xl border border-gray-200/70 bg-white/95 p-1.5 shadow-xl ring-1 ring-black/5 backdrop-blur-xl dark:border-white/[0.08] dark:bg-gray-900/95 dark:ring-white/10">
+                  <div className="px-2 pb-1 pt-0.5 text-[11px] text-gray-400 dark:text-gray-500">选择当前参考图</div>
+                  <div className="max-h-56 overflow-y-auto custom-scrollbar">
+                    {atImageOptions.map(({ img, index }, optionIndex) => (
+                      <button
+                        key={img.id}
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault()
+                          selectAtImageOption(index)
+                        }}
+                        onMouseEnter={() => setAtImageMenuIndex(optionIndex)}
+                        className={`flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-xs transition-colors ${
+                          optionIndex === atImageMenuIndex
+                            ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300'
+                            : 'text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-white/[0.06]'
+                        }`}
+                      >
+                        <span className="h-9 w-9 shrink-0 overflow-hidden rounded-lg border border-gray-200/70 dark:border-white/[0.08]">
+                          <img src={img.dataUrl} className="h-full w-full object-cover" alt="" />
+                        </span>
+                        <span className="min-w-0 flex-1 truncate font-medium">{getImageMentionLabel(index)}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div
+                ref={textareaRef}
+                contentEditable
+                suppressContentEditableWarning
+                onInput={(e) => {
+                  isUserInputRef.current = true
+                  const el = e.currentTarget
+                  const range = getContentEditableSelection(el)
+                  setCursorPos(range.start)
+                  syncMentionTagSelection(el)
+                  const text = getContentEditablePlainText(el)
+                  setPrompt(text)
+                  setAtImageMenuIndex(0)
+                  setAtImageMenuDismissed(false)
+                }}
+                onSelect={(e) => {
+                  const el = e.currentTarget
+                  const range = getContentEditableSelection(el)
+                  setCursorPos(range.start)
+                  syncMentionTagSelection(el)
+                  setAtImageMenuIndex(0)
+                  setAtImageMenuDismissed(false)
+                }}
+                onKeyDown={handleKeyDown}
+                onPaste={handlePromptPaste}
+                onCopy={handlePromptCopy}
+                onClick={(e) => {
+                  const el = textareaRef.current
+                  if (!el) return
+                  const target = e.target as HTMLElement
+                  if (target.classList.contains('mention-tag')) {
+                    const sel = window.getSelection()
+                    if (sel) {
+                      const range = document.createRange()
+                      range.selectNode(target)
+                      sel.removeAllRanges()
+                      sel.addRange(range)
+                      syncMentionTagSelection(el)
+                    }
+                    return
+                  }
+                  syncMentionTagSelection(el)
+                }}
+                data-placeholder="一位身穿未来机甲的女性战士，站在雨后霓虹城市天台，长发飘动，手持能量剑，电影感光影，赛博朋克风格"
+                className="create-prompt-input"
+              />
+            </div>
+            <div className="create-prompt-actions">
+              <div className="create-helper-buttons">
+                <button type="button">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M12 3l1.7 4.9L19 9.6l-5.3 1.7L12 16l-1.7-4.7L5 9.6l5.3-1.7L12 3Z" />
+                    <path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15Z" />
+                  </svg>
+                  提示词助手
+                </button>
+                <button type="button">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M4 7h16" />
+                    <path d="M7 12h10" />
+                    <path d="M10 17h4" />
+                    <path d="M19 5 5 19" />
+                  </svg>
+                  反向提示词
+                </button>
+              </div>
+              <div className="create-generate-actions">
+                <span className="create-char-count">{Math.min(visiblePrompt.length, 1000)}/1000</span>
+                <button
+                  type="button"
+                  className="create-submit-button"
+                  onMouseEnter={() => setSubmitHover(true)}
+                  onMouseLeave={() => setSubmitHover(false)}
+                  onClick={() => hasSubmitApiConfig ? submitTask() : setShowSettings(true)}
+                  disabled={hasSubmitApiConfig ? !canSubmit : false}
+                >
+                  <ButtonTooltip visible={!hasSubmitApiConfig && submitHover} text="尚未完成 API 配置，请在右上角设置中进行" />
+                  <svg className="create-submit-image-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <rect x="4" y="5" width="16" height="14" rx="2.5" />
+                    <path d="m4 15 4.4-4.4a2 2 0 0 1 2.8 0L16 15" />
+                    <path d="m14 13 1.2-1.2a2 2 0 0 1 2.8 0L20 14" />
+                    <circle cx="15.5" cy="8.5" r="1.4" />
+                  </svg>
+                  <span>{maskDraft ? '遮罩编辑' : '生成'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </>
+    )
+  }
+
   return (
     <>
       {/* 全屏拖拽遮罩 */}
@@ -1634,7 +1807,7 @@ export default function InputBar() {
         />
       )}
 
-      <div data-input-bar className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-30 w-full max-w-4xl px-3 sm:px-4 transition-all duration-300">
+      <div data-input-bar className="image-pro-inputbar fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-30 w-full max-w-4xl px-3 sm:px-4 transition-all duration-300">
         {selectedTaskIds.length > 0 && (
           <div className="flex justify-center mb-3">
             <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur shadow-[0_8px_30px_rgb(0,0,0,0.12)] dark:shadow-lg rounded-full flex items-center p-1 border border-gray-200/50 dark:border-white/10 pointer-events-auto">
@@ -1703,7 +1876,7 @@ export default function InputBar() {
             </div>
           </div>
         )}
-        <div ref={cardRef} className="bg-white/70 dark:bg-gray-900/70 backdrop-blur-2xl border border-white/50 dark:border-white/[0.08] shadow-[0_8px_30px_rgb(0,0,0,0.08)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.3)] rounded-2xl sm:rounded-3xl p-3 sm:p-4 ring-1 ring-black/5 dark:ring-white/10">
+        <div ref={cardRef} className="image-pro-composer bg-white/70 dark:bg-gray-900/70 backdrop-blur-2xl border border-white/50 dark:border-white/[0.08] shadow-[0_8px_30px_rgb(0,0,0,0.08)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.3)] rounded-2xl sm:rounded-3xl p-3 sm:p-4 ring-1 ring-black/5 dark:ring-white/10">
           {/* 移动端拖动条 */}
           <div
             ref={handleRef}

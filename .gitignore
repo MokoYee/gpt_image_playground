@@ -6,3 +6,4 @@ dev-proxy.config.json
 .history/
 AGENTS.md
 .env.local
+.tmp-images

@@ -93,6 +93,7 @@ export interface ModelProfile {
   model: string
   apiMode: 'images' | 'responses'
   timeoutSeconds: number
+  environment: 'all' | 'development' | 'production'
   enabled: boolean
   isDefault: boolean
 }

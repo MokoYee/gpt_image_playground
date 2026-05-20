@@ -2,12 +2,22 @@ import type { DbClient, DbPool } from '../db.js'
 import { withTransaction } from '../db.js'
 import { callImageProvider, type TaskParams } from './imageProxy.js'
 import { readStoredImageAsDataUrl, storeImageFile } from './imageStorage.js'
-import { readSystemSettings } from './settings.js'
+import { isModelProfileAvailable } from './modelProfiles.js'
+import { readSystemSettings, type ModelProfile } from './settings.js'
 
 const STUCK_RUNNING_MS = 15 * 60 * 1000
+const MODEL_ALIAS_CANDIDATES: Record<string, string[]> = {
+  'image-1': ['image-1', 'gpt-image-1'],
+  'gpt-image-1': ['gpt-image-1', 'image-1'],
+  'image-1.5': ['image-1.5', 'gpt-image-1.5'],
+  'gpt-image-1.5': ['gpt-image-1.5', 'image-1.5'],
+  'image-2': ['image-2', 'gpt-image-2'],
+  'gpt-image-2': ['gpt-image-2', 'image-2'],
+}
 
 interface ImageQueueConfig {
   storageRoot: string
+  nodeEnv: string
   logger?: {
     info: (value: unknown, message?: string) => void
     error: (value: unknown, message?: string) => void
@@ -19,6 +29,8 @@ interface QueuedTaskRow {
   user_id: string
   prompt: string
   params: TaskParams
+  api_provider: string
+  api_model: string
 }
 
 function baseCredits(quality: TaskParams['quality']): number {
@@ -53,6 +65,47 @@ function mapRevisedPromptByImage(fileIds: string[], revisedPrompts?: Array<strin
     if (revised) result[fileIds[index]] = revised
   }
   return Object.keys(result).length ? result : null
+}
+
+function providerKey(profile: ModelProfile) {
+  return `${profile.id}:${profile.baseUrl}:${profile.model}:${profile.apiMode}`
+}
+
+function isRetryableProviderError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error)
+  return /fetch failed|failed to fetch|network|timeout|timed out|abort|aborted|econn|enotfound|etimedout|ehostunreach|enetunreach|socket|连接|超时|网络/i.test(message)
+}
+
+function formatProviderError(error: unknown) {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function resolveTaskModelProfiles(settings: Awaited<ReturnType<typeof readSystemSettings>>, task: QueuedTaskRow, nodeEnv: string) {
+  const candidates = MODEL_ALIAS_CANDIDATES[task.api_model] ?? [task.api_model]
+  const profiles = settings.models.filter((model) =>
+    model.enabled &&
+    model.provider === task.api_provider &&
+    candidates.includes(model.model) &&
+    isModelProfileAvailable(model, nodeEnv)
+  )
+  if (
+    !profiles.length &&
+    settings.defaultModel &&
+    isModelProfileAvailable(settings.defaultModel, nodeEnv)
+  ) {
+    profiles.push({
+      ...settings.defaultModel,
+      provider: task.api_provider as 'openai-compatible',
+      model: candidates.includes(settings.defaultModel.model) ? settings.defaultModel.model : task.api_model,
+    })
+  }
+  const seen = new Set<string>()
+  return profiles.filter((profile) => {
+    const key = providerKey(profile)
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 }
 
 export class ImageQueueWorker {
@@ -111,7 +164,7 @@ export class ImageQueueWorker {
 
       const candidate = await client.query<QueuedTaskRow & { user_running: string; concurrency_limit: number | null }>(
         `
-          select t.id::text, t.user_id::text, t.prompt, t.params,
+          select t.id::text, t.user_id::text, t.prompt, t.params, t.api_provider, t.api_model,
                  w.concurrency_limit,
                  (
                    select count(*) from image_tasks running
@@ -143,6 +196,8 @@ export class ImageQueueWorker {
           user_id: row.user_id,
           prompt: row.prompt,
           params: mapParams(row.params),
+          api_provider: row.api_provider,
+          api_model: row.api_model,
         }
       }
 
@@ -154,17 +209,46 @@ export class ImageQueueWorker {
     const startedAt = Date.now()
     try {
       const settings = await readSystemSettings(this.pool)
-      const modelProfile = settings.defaultModel
-      if (!modelProfile) throw new Error('管理员尚未配置启用的默认模型服务')
+      const modelProfiles = resolveTaskModelProfiles(settings, task, this.config.nodeEnv)
+      if (!modelProfiles.length) throw new Error('管理员尚未配置启用的默认模型服务')
       const inputImages = await this.readTaskImages(task.id, 'upload')
       const maskImages = await this.readTaskImages(task.id, 'mask')
 
-      const providerResult = await callImageProvider(modelProfile, {
-        prompt: task.prompt,
-        params: task.params,
-        inputImageDataUrls: inputImages,
-        maskDataUrl: maskImages[0],
-      })
+      let providerResult: Awaited<ReturnType<typeof callImageProvider>> | null = null
+      let lastProviderError: unknown
+      for (let index = 0; index < modelProfiles.length; index++) {
+        const modelProfile = modelProfiles[index]
+        try {
+          providerResult = await callImageProvider(modelProfile, {
+            prompt: task.prompt,
+            params: task.params,
+            inputImageDataUrls: inputImages,
+            maskDataUrl: maskImages[0],
+          })
+          break
+        } catch (error) {
+          lastProviderError = error
+          const shouldTryNext = index < modelProfiles.length - 1 && isRetryableProviderError(error)
+          this.config.logger?.error(
+            {
+              taskId: task.id,
+              provider: modelProfile.provider,
+              model: modelProfile.model,
+              profileName: modelProfile.name,
+              baseUrl: modelProfile.baseUrl,
+              error: formatProviderError(error),
+              willRetry: shouldTryNext,
+            },
+            'image provider request failed',
+          )
+          if (!shouldTryNext) {
+            throw new Error(`模型服务「${modelProfile.name}」请求失败：${formatProviderError(error)}`)
+          }
+        }
+      }
+      if (!providerResult) {
+        throw new Error(`模型服务连接失败：${formatProviderError(lastProviderError)}`)
+      }
       const elapsed = Date.now() - startedAt
       const actualImageCount = providerResult.images.length
 

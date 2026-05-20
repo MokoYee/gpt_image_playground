@@ -206,10 +206,12 @@ export default function TaskCard({
   const showN = task.params.n > 1 || nDisplay.isMismatch
 
   const showModel = task.apiModel && task.apiModel !== DEFAULT_IMAGES_MODEL
+  const canRetry = task.status === 'error' || settings.alwaysShowRetryButton
+  const canCancel = task.status === 'queued' && task.serverTaskId
   const errorSummary = task.error?.trim().split('\n').find(Boolean) || '生成失败'
 
   return (
-    <div className="relative rounded-xl">
+    <div className="image-pro-task-card relative rounded-xl">
       {/* 侧滑底图 */}
       <div
         className={`absolute inset-0 rounded-xl flex items-center transition-opacity duration-200 pointer-events-none ${
@@ -264,6 +266,96 @@ export default function TaskCard({
       <div className="flex h-40">
         {/* 左侧图片区域 */}
         <div className="w-40 min-w-[10rem] h-full bg-gray-100 dark:bg-black/20 relative flex items-center justify-center overflow-hidden flex-shrink-0">
+          <div
+            className="task-card-hover-actions"
+            data-no-drag-select
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {canRetry && (
+              <button
+                type="button"
+                onClick={() => retryTask(task)}
+                className="task-card-hover-action is-blue"
+                title="重试任务"
+                aria-label="重试任务"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M3 12a9 9 0 0 1 15.5-6.2" />
+                  <path d="M18 2v4h4" />
+                  <path d="M21 12a9 9 0 0 1-15.5 6.2" />
+                  <path d="M6 22v-4H2" />
+                </svg>
+              </button>
+            )}
+            {canCancel && (
+              <button
+                type="button"
+                onClick={() => cancelQueuedTask(task)}
+                className="task-card-hover-action is-red"
+                title="取消任务"
+                aria-label="取消任务"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M18 6 6 18" />
+                  <path d="m6 6 12 12" />
+                </svg>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => void toggleTaskFavorite(task)}
+              className={`task-card-hover-action is-yellow${task.isFavorite ? ' is-active' : ''}`}
+              title={task.isFavorite ? '取消收藏' : '收藏记录'}
+              aria-label={task.isFavorite ? '取消收藏' : '收藏记录'}
+            >
+              <svg viewBox="0 0 24 24" fill={task.isFavorite ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="m12 2.8 2.8 5.7 6.3.9-4.5 4.4 1.1 6.2-5.7-3-5.7 3 1.1-6.2-4.5-4.4 6.3-.9L12 2.8Z" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={onReuse}
+              className="task-card-hover-action is-blue"
+              title="复用配置"
+              aria-label="复用配置"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M3 10h10a8 8 0 0 1 8 8v2" />
+                <path d="m3 10 6 6" />
+                <path d="m3 10 6-6" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={onEditOutputs}
+              className="task-card-hover-action is-green"
+              title="编辑输出"
+              aria-label="编辑输出"
+              disabled={!task.outputImages?.length}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={onDelete}
+              className="task-card-hover-action is-red"
+              title="删除记录"
+              aria-label="删除记录"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M3 6h18" />
+                <path d="M8 6V4h8v2" />
+                <path d="m6 6 1 15h10l1-15" />
+                <path d="M10 11v6" />
+                <path d="M14 11v6" />
+              </svg>
+            </button>
+          </div>
           {(task.status === 'queued' || task.status === 'running') && (
             <div className="flex flex-col items-center gap-2">
               {task.status === 'running' ? (
@@ -447,7 +539,7 @@ export default function TaskCard({
               className="flex w-full items-center justify-between flex-shrink-0 mt-0.5 sm:w-auto sm:justify-end sm:gap-1"
               onClick={(e) => e.stopPropagation()}
             >
-              {(task.status === 'error' || settings.alwaysShowRetryButton) && (
+              {canRetry && (
                 <button
                   onClick={() => retryTask(task)}
                   className="p-1.5 rounded-md hover:bg-blue-50 dark:hover:bg-blue-950/30 text-gray-400 hover:text-blue-500 transition"
@@ -458,7 +550,7 @@ export default function TaskCard({
                   </svg>
                 </button>
               )}
-              {task.status === 'queued' && task.serverTaskId && (
+              {canCancel && (
                 <button
                   onClick={() => cancelQueuedTask(task)}
                   className="p-1.5 rounded-md hover:bg-red-50 dark:hover:bg-red-950/30 text-gray-400 hover:text-red-500 transition"

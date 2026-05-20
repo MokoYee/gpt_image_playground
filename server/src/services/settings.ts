@@ -47,6 +47,7 @@ export interface QueueSettings {
 export interface ModelProfile extends ImageApiSettings {
   id: string
   name: string
+  environment: 'all' | 'development' | 'production'
   enabled: boolean
   isDefault: boolean
 }
@@ -116,7 +117,7 @@ export async function readSystemSettings(pool: DbPool | DbClient): Promise<Syste
   const map = new Map(result.rows.map((row) => [row.key, row.value]))
   const modelResult = await pool.query(
     `
-      select id::text, name, provider, base_url, api_key, model, api_mode, timeout_seconds, enabled, is_default
+      select id::text, name, provider, base_url, api_key, model, api_mode, timeout_seconds, environment, enabled, is_default
       from model_profiles
       order by is_default desc, created_at asc
     `,
@@ -130,6 +131,7 @@ export async function readSystemSettings(pool: DbPool | DbClient): Promise<Syste
     model: row.model,
     apiMode: row.api_mode === 'responses' ? 'responses' : 'images',
     timeoutSeconds: Number(row.timeout_seconds ?? 120),
+    environment: ['development', 'production'].includes(row.environment) ? row.environment : 'all',
     enabled: Boolean(row.enabled),
     isDefault: Boolean(row.is_default),
   }))

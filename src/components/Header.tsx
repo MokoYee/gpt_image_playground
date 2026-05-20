@@ -77,7 +77,7 @@ export default function Header({ appName, user, onLogout, onOpenConsole, onOpenA
 
   return (
     <>
-      <header data-no-drag-select className="safe-area-top fixed top-0 left-0 right-0 z-40 bg-white/80 dark:bg-gray-950/80 backdrop-blur border-b border-gray-200 dark:border-white/[0.08]">
+      <header data-no-drag-select className="image-pro-header safe-area-top fixed top-0 left-0 right-0 z-40 bg-white/80 dark:bg-gray-950/80 backdrop-blur border-b border-gray-200 dark:border-white/[0.08]">
         <div className="safe-area-x safe-header-inner max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex-1 min-w-0 pr-2">
             <h1 className="inline-flex items-start relative">

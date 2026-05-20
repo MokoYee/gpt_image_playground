@@ -31,6 +31,10 @@ const MIME_MAP: Record<TaskParams['output_format'], string> = {
   webp: 'image/webp',
 }
 const MAX_UPSTREAM_ERROR_BODY_LENGTH = 4000
+const UPSTREAM_USER_AGENT = 'Mozilla/5.0 (compatible; gpt-image-playground/2.0)'
+const UPSTREAM_CLIENT_HEADERS = {
+  'User-Agent': UPSTREAM_USER_AGENT,
+}
 
 function buildApiUrl(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`
@@ -98,7 +102,7 @@ function normalizeBase64Image(value: string, fallbackMime: string): string {
 async function fetchImageAsDataUrl(url: string, fallbackMime: string, signal: AbortSignal): Promise<string> {
   if (url.startsWith('data:')) return url
   try {
-    const response = await fetch(url, { signal })
+    const response = await fetch(url, { headers: UPSTREAM_CLIENT_HEADERS, signal })
     if (!response.ok) throw new Error(`HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ''}`)
     const contentType = response.headers.get('content-type') || fallbackMime
     return dataUrlFromBytes(await response.arrayBuffer(), contentType)
@@ -168,6 +172,7 @@ export async function callImageProvider(settings: ImageApiSettings, request: Ima
       const response = await fetch(buildApiUrl(settings.baseUrl, 'responses'), {
         method: 'POST',
         headers: {
+          ...UPSTREAM_CLIENT_HEADERS,
           Authorization: `Bearer ${settings.apiKey}`,
           'Content-Type': 'application/json',
         },
@@ -221,7 +226,10 @@ export async function callImageProvider(settings: ImageApiSettings, request: Ima
       }
       const response = await fetch(buildApiUrl(settings.baseUrl, 'images/edits'), {
         method: 'POST',
-        headers: { Authorization: `Bearer ${settings.apiKey}` },
+        headers: {
+          ...UPSTREAM_CLIENT_HEADERS,
+          Authorization: `Bearer ${settings.apiKey}`,
+        },
         body: form,
         signal: controller.signal,
       })
@@ -232,6 +240,7 @@ export async function callImageProvider(settings: ImageApiSettings, request: Ima
     const response = await fetch(buildApiUrl(settings.baseUrl, 'images/generations'), {
       method: 'POST',
       headers: {
+        ...UPSTREAM_CLIENT_HEADERS,
         Authorization: `Bearer ${settings.apiKey}`,
         'Content-Type': 'application/json',
       },
