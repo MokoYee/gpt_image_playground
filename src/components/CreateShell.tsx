@@ -7,14 +7,20 @@ import { DEFAULT_PARAMS } from '../types'
 import type { AppUser } from '../lib/auth'
 import Select from './Select'
 import SizePickerModal from './SizePickerModal'
+import SidebarUserMenu from './SidebarUserMenu'
 import ThemeToggle from './ThemeToggle'
+import AppLogoMark from './AppLogoMark'
+
+export type CreateNavKey = 'create' | 'favorite' | 'history'
 
 interface CreateShellProps {
   appName: string
   user: AppUser
+  activeNavKey: CreateNavKey
+  onNavigate: (key: CreateNavKey) => void
   onLogout: () => void
-  onOpenAccount: () => void
   onOpenConsole?: () => void
+  showSettings?: boolean
   children: ReactNode
 }
 
@@ -76,47 +82,21 @@ function CreateIcon({ type }: { type: 'create' | 'gallery' | 'favorite' | 'model
   )
 }
 
-function UserAvatar({ user }: { user: AppUser }) {
-  return (
-    <span className="create-user-avatar" aria-hidden="true">
-      {(user.username || user.email || '?').slice(0, 1).toUpperCase()}
-    </span>
-  )
-}
-
-type CreateNavKey = 'create' | 'gallery' | 'favorite' | 'history'
 type CreateNavIconType = Parameters<typeof CreateIcon>[0]['type']
 
 const CREATE_NAV_ITEMS: Array<{ key: CreateNavKey; label: string; type: CreateNavIconType }> = [
   { key: 'create', label: '创作', type: 'create' },
-  { key: 'gallery', label: '画廊', type: 'gallery' },
+  // 画廊入口先隐藏，后续画廊模块开发完成后再恢复。
+  // { key: 'gallery', label: '画廊', type: 'gallery' },
   { key: 'favorite', label: '收藏', type: 'favorite' },
   { key: 'history', label: '历史', type: 'history' },
 ]
 
-function CreateSidebar({ appName, user, onLogout, onOpenAccount, onOpenConsole }: Omit<CreateShellProps, 'children'>) {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [activeNavKey, setActiveNavKey] = useState<CreateNavKey>('create')
-  const timerRef = useRef<number | null>(null)
-
-  useEffect(() => () => {
-    if (timerRef.current !== null) window.clearTimeout(timerRef.current)
-  }, [])
-
-  const openMenu = () => {
-    if (timerRef.current !== null) window.clearTimeout(timerRef.current)
-    setMenuOpen(true)
-  }
-
-  const closeSoon = () => {
-    if (timerRef.current !== null) window.clearTimeout(timerRef.current)
-    timerRef.current = window.setTimeout(() => setMenuOpen(false), 160)
-  }
-
+function CreateSidebar({ appName, user, activeNavKey, onNavigate, onLogout, onOpenConsole }: Omit<CreateShellProps, 'children' | 'showSettings'>) {
   return (
     <aside className="create-sidebar" data-no-drag-select>
       <div className="create-brand-mark" title={appName}>
-        <CreateIcon type="gallery" />
+        <AppLogoMark />
       </div>
       <nav className="create-nav-list justify-center" aria-label="创作导航">
         {CREATE_NAV_ITEMS.map((item) => {
@@ -127,7 +107,7 @@ function CreateSidebar({ appName, user, onLogout, onOpenAccount, onOpenConsole }
               type="button"
               className={`create-nav-item${isActive ? ' is-active' : ''}`}
               aria-current={isActive ? 'page' : undefined}
-              onClick={() => setActiveNavKey(item.key)}
+              onClick={() => onNavigate(item.key)}
               title={item.label}
             >
               <span><CreateIcon type={item.type} /></span>
@@ -137,36 +117,12 @@ function CreateSidebar({ appName, user, onLogout, onOpenAccount, onOpenConsole }
         })}
       </nav>
       <div className="create-sidebar-footer">
-        <ThemeToggle className="create-sidebar-theme-toggle" />
-        <div className="create-credit-card">
-          <span>Credits</span>
-          <strong>{Number.isFinite(user.credits) ? user.credits.toFixed(0) : '-'}</strong>
-        </div>
-        <div
-          className="create-user-menu-wrap"
-          onMouseEnter={openMenu}
-          onMouseLeave={closeSoon}
-          onFocus={openMenu}
-          onBlur={(event) => {
-            const next = event.relatedTarget
-            if (!(next instanceof Node) || !event.currentTarget.contains(next)) setMenuOpen(false)
-          }}
-        >
-          <button type="button" className="create-user-trigger" onClick={() => setMenuOpen((open) => !open)}>
-            <UserAvatar user={user} />
-            <span>{user.username}</span>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
-              <path d="m6 9 6 6 6-6" />
-            </svg>
-          </button>
-          {menuOpen && (
-            <div className="create-user-menu" role="menu">
-              <button type="button" onClick={onOpenAccount}>账户信息</button>
-              {onOpenConsole && <button type="button" onClick={onOpenConsole}>控制台</button>}
-              <button type="button" onClick={onLogout}>退出</button>
-            </div>
-          )}
-        </div>
+        <ThemeToggle className="create-sidebar-theme-toggle" tooltipPlacement="right" />
+        <SidebarUserMenu
+          user={user}
+          actions={onOpenConsole ? [{ label: '控制台', onClick: onOpenConsole }] : []}
+          onLogout={onLogout}
+        />
       </div>
     </aside>
   )
@@ -381,15 +337,15 @@ function CreateSettingsPanel() {
   )
 }
 
-export default function CreateShell({ appName, user, onLogout, onOpenAccount, onOpenConsole, children }: CreateShellProps) {
+export default function CreateShell({ appName, user, activeNavKey, onNavigate, onLogout, onOpenConsole, showSettings = true, children }: CreateShellProps) {
   return (
     <main className="create-reference-page" data-drag-select-surface>
       <div className="create-reference-frame">
-        <CreateSidebar appName={appName} user={user} onLogout={onLogout} onOpenAccount={onOpenAccount} onOpenConsole={onOpenConsole} />
+        <CreateSidebar appName={appName} user={user} activeNavKey={activeNavKey} onNavigate={onNavigate} onLogout={onLogout} onOpenConsole={onOpenConsole} />
         <section className="create-workspace">
-          <div className="create-content-grid">
+          <div className={`create-content-grid${showSettings ? '' : ' is-full-width'}`}>
             <div className="create-main-column">{children}</div>
-            <CreateSettingsPanel />
+            {showSettings && <CreateSettingsPanel />}
           </div>
         </section>
       </div>

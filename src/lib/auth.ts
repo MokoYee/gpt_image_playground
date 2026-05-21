@@ -122,7 +122,7 @@ export interface PublicSettings {
   }
 }
 
-export const DEFAULT_APP_NAME = 'GPT Image Playground'
+export const DEFAULT_APP_NAME = 'MQIMAGE'
 export const AUTH_SESSION_STORAGE_KEY = 'gpt-image-playground.auth-session'
 const LEGACY_AUTH_SESSION_STORAGE_KEY = 'hua-image-playground.auth-session'
 

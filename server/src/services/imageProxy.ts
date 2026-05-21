@@ -1,3 +1,4 @@
+import { request as undiciRequest } from 'undici'
 import { dataUrlFromBytes } from './imageStorage.js'
 import type { ImageApiSettings } from './settings.js'
 
@@ -36,8 +37,57 @@ const UPSTREAM_CLIENT_HEADERS = {
   'User-Agent': UPSTREAM_USER_AGENT,
 }
 
+interface UpstreamResponse {
+  ok: boolean
+  status: number
+  statusText: string
+  headers: {
+    get: (name: string) => string | null
+  }
+  text: () => Promise<string>
+  json: () => Promise<any>
+}
+
+interface UpstreamRequestInit {
+  method?: string
+  headers?: Record<string, string>
+  body?: BodyInit | null
+  signal?: AbortSignal
+}
+
 function buildApiUrl(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`
+}
+
+function getHeaderValue(headers: Record<string, string | string[] | undefined>, name: string): string | null {
+  const value = headers[name.toLowerCase()]
+  if (Array.isArray(value)) return value.join(', ')
+  return value ?? null
+}
+
+async function requestUpstream(url: string, init: UpstreamRequestInit, settings: ImageApiSettings): Promise<UpstreamResponse> {
+  if (!settings.upstreamHostHeader) return fetch(url, init)
+
+  const response = await undiciRequest(url, {
+    method: init.method,
+    headers: {
+      ...init.headers,
+      Host: settings.upstreamHostHeader,
+    },
+    body: init.body as any,
+    signal: init.signal,
+  })
+  const headers = response.headers as Record<string, string | string[] | undefined>
+  return {
+    ok: response.statusCode >= 200 && response.statusCode < 300,
+    status: response.statusCode,
+    statusText: '',
+    headers: {
+      get: (name) => getHeaderValue(headers, name),
+    },
+    text: () => response.body.text(),
+    json: () => response.body.json() as Promise<any>,
+  }
 }
 
 function truncateErrorBody(text: string): string {
@@ -46,7 +96,7 @@ function truncateErrorBody(text: string): string {
   return `${trimmed.slice(0, MAX_UPSTREAM_ERROR_BODY_LENGTH)}\n... upstream response truncated`
 }
 
-async function getErrorMessage(response: Response): Promise<string> {
+async function getErrorMessage(response: UpstreamResponse): Promise<string> {
   const statusText = response.statusText ? ` ${response.statusText}` : ''
   const prefix = `HTTP ${response.status}${statusText}`
   const text = await response.text().catch(() => '')
@@ -169,7 +219,7 @@ export async function callImageProvider(settings: ImageApiSettings, request: Ima
   const mime = MIME_MAP[request.params.output_format] || 'image/png'
   try {
     if (settings.apiMode === 'responses') {
-      const response = await fetch(buildApiUrl(settings.baseUrl, 'responses'), {
+      const response = await requestUpstream(buildApiUrl(settings.baseUrl, 'responses'), {
         method: 'POST',
         headers: {
           ...UPSTREAM_CLIENT_HEADERS,
@@ -197,7 +247,7 @@ export async function callImageProvider(settings: ImageApiSettings, request: Ima
           }],
         }),
         signal: controller.signal,
-      })
+      }, settings)
       if (!response.ok) throw new Error(await getErrorMessage(response))
       return parseResponsesApiResponse(await response.json(), mime)
     }
@@ -224,7 +274,7 @@ export async function callImageProvider(settings: ImageApiSettings, request: Ima
         const response = await fetch(request.maskDataUrl, { signal: controller.signal })
         form.append('mask', await response.blob(), 'mask.png')
       }
-      const response = await fetch(buildApiUrl(settings.baseUrl, 'images/edits'), {
+      const response = await requestUpstream(buildApiUrl(settings.baseUrl, 'images/edits'), {
         method: 'POST',
         headers: {
           ...UPSTREAM_CLIENT_HEADERS,
@@ -232,12 +282,12 @@ export async function callImageProvider(settings: ImageApiSettings, request: Ima
         },
         body: form,
         signal: controller.signal,
-      })
+      }, settings)
       if (!response.ok) throw new Error(await getErrorMessage(response))
       return parseImagesApiResponse(await response.json(), mime, controller.signal)
     }
 
-    const response = await fetch(buildApiUrl(settings.baseUrl, 'images/generations'), {
+    const response = await requestUpstream(buildApiUrl(settings.baseUrl, 'images/generations'), {
       method: 'POST',
       headers: {
         ...UPSTREAM_CLIENT_HEADERS,
@@ -256,7 +306,7 @@ export async function callImageProvider(settings: ImageApiSettings, request: Ima
         response_format: 'b64_json',
       }),
       signal: controller.signal,
-    })
+    }, settings)
     if (!response.ok) throw new Error(await getErrorMessage(response))
     return parseImagesApiResponse(await response.json(), mime, controller.signal)
   } catch (error) {

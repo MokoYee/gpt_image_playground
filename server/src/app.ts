@@ -30,6 +30,8 @@ export async function createApp(context: AppContext) {
   app.decorate('imageQueue', new ImageQueueWorker(context.db, {
     storageRoot: context.config.IMAGE_STORAGE_PATH,
     nodeEnv: context.config.NODE_ENV,
+    imageApiDevBaseUrl: context.config.IMAGE_API_DEV_BASE_URL,
+    imageApiDevHostHeader: context.config.IMAGE_API_DEV_HOST_HEADER,
     logger: app.log,
   }))
   app.setErrorHandler(errorHandler)

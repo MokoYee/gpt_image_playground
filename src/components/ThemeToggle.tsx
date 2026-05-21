@@ -19,6 +19,7 @@ const THEME_LABELS: Record<ThemePreference, string> = {
 interface ThemeToggleProps {
   className?: string
   onResolvedThemeChange?: (theme: ResolvedTheme) => void
+  tooltipPlacement?: 'top' | 'bottom' | 'left' | 'right' | 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight' | 'leftTop' | 'leftBottom' | 'rightTop' | 'rightBottom'
 }
 
 function SunIcon() {
@@ -57,7 +58,7 @@ function getNextThemePreference(preference: ThemePreference): ThemePreference {
   return THEME_ORDER[(THEME_ORDER.indexOf(preference) + 1) % THEME_ORDER.length]
 }
 
-export default function ThemeToggle({ className = '', onResolvedThemeChange }: ThemeToggleProps) {
+export default function ThemeToggle({ className = '', onResolvedThemeChange, tooltipPlacement = 'bottomRight' }: ThemeToggleProps) {
   const [themePreference, setThemePreference] = useState<ThemePreference>(() => readThemePreference())
   const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() => resolveThemePreference(readThemePreference()))
 
@@ -90,7 +91,7 @@ export default function ThemeToggle({ className = '', onResolvedThemeChange }: T
     <div className={`theme-toggle-wrap ${className}`.trim()}>
       <Tooltip
         title={tooltipTitle}
-        placement="bottomRight"
+        placement={tooltipPlacement}
         trigger={['hover', 'focus']}
         rootClassName="theme-toggle-antd-tooltip"
       >

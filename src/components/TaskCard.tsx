@@ -263,6 +263,23 @@ export default function TaskCard({
           </svg>
         </div>
       )}
+      <button
+        type="button"
+        className={`task-card-favorite-pin${task.isFavorite ? ' is-active' : ''}${isSelected ? ' is-shifted' : ''}`}
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          void toggleTaskFavorite(task)
+        }}
+        title={task.isFavorite ? '取消收藏' : '收藏记录'}
+        aria-label={task.isFavorite ? '取消收藏' : '收藏记录'}
+      >
+        <svg viewBox="0 0 24 24" fill={task.isFavorite ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="m12 2.8 2.8 5.7 6.3.9-4.5 4.4 1.1 6.2-5.7-3-5.7 3 1.1-6.2-4.5-4.4 6.3-.9L12 2.8Z" />
+        </svg>
+      </button>
       <div className="flex h-40">
         {/* 左侧图片区域 */}
         <div className="w-40 min-w-[10rem] h-full bg-gray-100 dark:bg-black/20 relative flex items-center justify-center overflow-hidden flex-shrink-0">

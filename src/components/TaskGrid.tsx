@@ -39,6 +39,7 @@ export default function TaskGrid() {
     const q = searchQuery.trim().toLowerCase()
     
     return sorted.filter((t) => {
+      if (t.status !== 'done' || t.outputImages.length === 0) return false
       if (currentUser) {
         const canSeeTask = t.ownerUserId === currentUser.id || (!t.ownerUserId && currentUser.role === 'admin')
         if (!canSeeTask) return false
@@ -283,7 +284,7 @@ export default function TaskGrid() {
                 d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
               />
             </svg>
-            <p className="text-sm">输入提示词开始生成图片</p>
+            <p className="text-sm">完成后的图片会显示在这里</p>
           </>
         )}
       </div>

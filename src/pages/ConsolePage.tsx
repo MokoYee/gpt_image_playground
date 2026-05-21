@@ -14,7 +14,8 @@ import Space from 'antd/es/space'
 import Switch from 'antd/es/switch'
 import Table from 'antd/es/table'
 import Tag from 'antd/es/tag'
-import ArrowLeftOutlined from '@ant-design/icons/es/icons/ArrowLeftOutlined'
+import CopyOutlined from '@ant-design/icons/es/icons/CopyOutlined'
+import LinkOutlined from '@ant-design/icons/es/icons/LinkOutlined'
 import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined'
 import SearchOutlined from '@ant-design/icons/es/icons/SearchOutlined'
 import UserAddOutlined from '@ant-design/icons/es/icons/UserAddOutlined'
@@ -44,8 +45,10 @@ import type { AppUser, AuditLog, CreditRecord, ModelProfile, SystemSettings, Usa
 import { createProtectedImageLink, fetchProtectedImageDataUrl } from '../lib/api'
 import { copyTextToClipboard, getClipboardFailureMessage } from '../lib/clipboard'
 import { useStore } from '../store'
-import Lightbox from './Lightbox'
-import ThemeToggle from './ThemeToggle'
+import Lightbox from '../components/Lightbox'
+import SidebarUserMenu from '../components/SidebarUserMenu'
+import ThemeToggle from '../components/ThemeToggle'
+import AppLogoMark from '../components/AppLogoMark'
 import { readThemePreference, resolveThemePreference } from '../lib/theme'
 import type { ResolvedTheme } from '../lib/theme'
 
@@ -53,6 +56,7 @@ interface ConsolePageProps {
   currentUser: AppUser
   appName: string
   onAppNameChange?: (appName: string) => void
+  onLogout: () => void
   onClose: () => void
 }
 
@@ -83,7 +87,7 @@ const SETTINGS_PLACEHOLDERS = {
   defaultMultiplier: '1',
   globalConcurrency: '10',
   defaultUserConcurrency: '3',
-  maxQueueSize: '100',
+  maxQueueSize: '3',
 }
 
 const EMPTY_CREATE_USER_FORM = {
@@ -261,14 +265,14 @@ function StatIcon({ type }: { type: 'users' | 'enabled' | 'credits' | 'today' })
 
 function Stat({ label, value, trend, icon }: { label: string; value: string | number; trend?: string; icon: 'users' | 'enabled' | 'credits' | 'today' }) {
   return (
-    <div className="rounded-xl border border-gray-200/70 bg-white px-4 py-3 shadow-sm dark:border-white/[0.08] dark:bg-white/[0.03]">
+    <div className="console-stat-card">
       <div className="console-stat-heading">
         <span><StatIcon type={icon} /></span>
         <em>{label}</em>
       </div>
-      <div className="mt-1 flex items-end gap-2">
-        <span className="text-xl font-bold tracking-tight text-gray-900 dark:text-gray-100">{value}</span>
-        {trend && <span className="pb-0.5 text-[10px] font-semibold text-emerald-500">{trend}</span>}
+      <div className="console-stat-value-row">
+        <strong>{value}</strong>
+        {trend && <span>{trend}</span>}
       </div>
     </div>
   )
@@ -326,7 +330,6 @@ function RowActionButton({ label, title, disabled, onClick, children }: { label:
   return (
     <Button
       type="text"
-      size="small"
       onClick={onClick}
       disabled={disabled}
       className="console-row-action"
@@ -420,8 +423,8 @@ function generatePassword() {
   return `${randomPart}A1`
 }
 
-export default function ConsolePage({ currentUser, appName, onAppNameChange, onClose }: ConsolePageProps) {
-  const [tab, setTab] = useState<ConsoleTab>('usage')
+export default function ConsolePage({ currentUser, appName, onAppNameChange, onLogout, onClose }: ConsolePageProps) {
+  const [tab, setTab] = useState<ConsoleTab>('users')
   const [users, setUsers] = useState<AppUser[]>([])
   const [creditRecords, setCreditRecords] = useState<CreditRecord[]>([])
   const [usageRecords, setUsageRecords] = useState<UsageRecord[]>([])
@@ -444,6 +447,7 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
   const [modalApi, modalContextHolder] = Modal.useModal()
   const setLightboxImageId = useStore((state) => state.setLightboxImageId)
   const isDarkMode = resolvedTheme === 'dark'
+  const sidebarUser = users.find((user) => user.id === currentUser.id) ?? currentUser
 
   const totals = useMemo(() => {
     const today = new Date()
@@ -795,22 +799,22 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
     }
   }
 
-  const navItems: Array<{ key: ConsoleTab; label: string; desc: string }> = [
-    { key: 'users', label: '用户管理', desc: '账号' },
-    { key: 'usage', label: '创作记录', desc: '图片' },
-    { key: 'settings', label: '系统设置', desc: '配置' },
-    { key: 'audit', label: '审计日志', desc: '日志' },
-    { key: 'credits', label: '充值记录', desc: '流水' },
+  const navItems: Array<{ key: ConsoleTab; label: string }> = [
+    { key: 'users', label: '用户管理' },
+    { key: 'usage', label: '创作记录' },
+    { key: 'settings', label: '系统设置' },
+    { key: 'audit', label: '审计日志' },
+    { key: 'credits', label: '充值记录' },
   ]
 
-  const compactPagination = { pageSize: 8, showSizeChanger: false, hideOnSinglePage: true }
+  const compactPagination = { pageSize: 10, showSizeChanger: false, hideOnSinglePage: true }
 
   const userColumns: ColumnsType<AppUser> = [
     {
       title: '账号',
       dataIndex: 'username',
       key: 'account',
-      width: 220,
+      width: 242,
       render: (_, user) => (
         <div className="min-w-0">
           <div className="truncate font-medium text-gray-800 dark:text-gray-100" title={user.username}>{user.username}</div>
@@ -822,79 +826,64 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
       title: '角色',
       dataIndex: 'role',
       key: 'role',
-      width: 92,
+      width: 98,
       render: renderRole,
     },
     {
       title: '状态',
       dataIndex: 'disabled',
       key: 'status',
-      width: 88,
+      width: 104,
       render: renderUserStatus,
     },
     {
       title: 'Credits',
       dataIndex: 'credits',
       key: 'credits',
-      width: 108,
-      align: 'right',
+      width: 100,
       render: (value: number) => <span className="font-semibold">{value.toFixed(2)}</span>,
     },
     {
       title: '倍率',
       dataIndex: 'multiplier',
       key: 'multiplier',
-      width: 88,
-      align: 'right',
+      width: 75,
+      align: 'center',
     },
     {
       title: '并发',
       dataIndex: 'concurrencyLimit',
       key: 'concurrencyLimit',
-      width: 88,
+      width: 75,
       render: (value?: number | null) => value ?? '默认',
     },
     {
       title: '最后登录',
       dataIndex: 'lastLoginAt',
       key: 'lastLoginAt',
-      width: 160,
+      width: 172,
       render: formatOptionalTime,
     },
     {
       title: '最后活跃',
       dataIndex: 'lastActiveAt',
       key: 'lastActiveAt',
-      width: 160,
+      width: 158,
       render: formatOptionalTime,
     },
     {
       title: '最后使用',
       dataIndex: 'lastUsedAt',
       key: 'lastUsedAt',
-      width: 160,
+      width: 110,
       render: formatOptionalTime,
-    },
-    {
-      title: '备注',
-      dataIndex: 'note',
-      key: 'note',
-      width: 180,
-      ellipsis: true,
-      render: (value?: string) => <span title={value || ''}>{value || '-'}</span>,
-    },
-    {
-      title: '创建时间',
-      dataIndex: 'createdAt',
-      key: 'createdAt',
-      width: 160,
-      render: formatTime,
     },
     {
       title: '操作',
       key: 'actions',
-      width: 230,
+      width: 210,
       fixed: 'right',
+      className: 'console-table-action-cell',
       render: (_, user) => {
         const isSelf = user.id === currentUser.id
         const isAdmin = user.role === 'admin'
@@ -926,7 +915,7 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
                 },
               }}
             >
-              <Button type="text" size="small" icon={<ActionIcon type="more" />}>更多</Button>
+              <Button type="text" icon={<ActionIcon type="more" />}>更多</Button>
             </Dropdown>
           </Space>
         )
@@ -988,13 +977,13 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
       title: 'ID',
       dataIndex: 'id',
       key: 'id',
-      width: 34,
+      width: 88,
       render: (value: string) => <span className="console-id-cell">#{String(value).slice(-5)}</span>,
     },
     {
       title: '用户',
       key: 'user',
-      width: 40,
+      width: 112,
       render: (_, record) => {
         const user = users.find((item) => item.id === record.userId)
         return <span className="console-user-cell">{user?.username ?? record.username ?? '未知用户'}</span>
@@ -1003,7 +992,7 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
     {
       title: '预览图',
       key: 'images',
-      width: 36,
+      width: 92,
       render: (_, record) => {
         const image = record.imageFiles?.[0]
         const imageList = record.imageFiles?.map((item) => toServerLightboxImageId(item.id)) ?? []
@@ -1025,7 +1014,7 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
       title: '提示词',
       dataIndex: 'prompt',
       key: 'prompt',
-      width: 68,
+      width: 260,
       ellipsis: true,
       render: (value: string) => <span className="console-prompt-cell" title={value}>{value || '-'}</span>,
     },
@@ -1033,7 +1022,7 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
       title: '模型',
       dataIndex: 'apiModel',
       key: 'apiModel',
-      width: 48,
+      width: 150,
       ellipsis: true,
       render: (value?: string) => <span title={value || ''}>{value || '-'}</span>,
     },
@@ -1041,13 +1030,13 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
       title: '质量',
       dataIndex: 'quality',
       key: 'quality',
-      width: 36,
+      width: 96,
       render: (value: UsageRecord['quality']) => <Tag color={value === 'high' ? 'gold' : 'cyan'}>{value === 'high' ? '高质量' : value}</Tag>,
     },
     {
       title: '尺寸',
       key: 'size',
-      width: 28,
+      width: 78,
       render: (_, record) => {
         const image = record.imageFiles?.find((item) => item.width && item.height)
         if (!image?.width || !image.height) return '-'
@@ -1061,7 +1050,7 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
       title: 'Credits',
       dataIndex: 'totalCredits',
       key: 'totalCredits',
-      width: 34,
+      width: 96,
       align: 'right',
       render: (value: number) => <span className="font-semibold">{value}</span>,
     },
@@ -1069,14 +1058,14 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
       title: '状态',
       dataIndex: 'taskStatus',
       key: 'taskStatus',
-      width: 38,
+      width: 104,
       render: renderTaskStatus,
     },
     {
       title: '生成时间',
       dataIndex: 'createdAt',
       key: 'createdAt',
-      width: 44,
+      width: 132,
       render: (value: number) => {
         const date = new Date(value)
         return (
@@ -1089,25 +1078,26 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
     {
       title: '操作',
       key: 'actions',
-      width: 80,
+      width: 190,
       fixed: 'right',
+      className: 'console-table-action-cell',
       render: (_, record) => {
         const firstImage = record.imageFiles?.[0]
         return (
           <Space size={4} wrap={false} className="console-usage-actions">
             <Button
-              size="small"
               className="console-text-action"
+              icon={<CopyOutlined />}
               onClick={() => void copyText(record.prompt, '提示词已复制')}
               aria-label="复制提示词"
               title="复制提示词"
             >
-              复制提示词
+              提示词
             </Button>
             {firstImage && (
               <Button
-                size="small"
                 className="console-text-action"
+                icon={<LinkOutlined />}
                 onClick={() => {
                   void createProtectedImageLink(firstImage.id)
                     .then((link) => copyText(link, '图片链接已复制'))
@@ -1116,7 +1106,7 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
                 aria-label="复制图片链接"
                 title="复制图片链接"
               >
-                复制图片链接
+                图片链接
               </Button>
             )}
           </Space>
@@ -1168,6 +1158,16 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
     },
   ]
 
+  const activeNavItem = navItems.find((item) => item.key === tab) ?? navItems[0]
+  const tabSubtitles: Record<ConsoleTab, string> = {
+    users: '管理账号、额度与使用状态',
+    usage: '查询图片生成记录、模型与消耗明细',
+    settings: '维护站点、安全、队列与模型服务',
+    audit: '追踪管理员操作与系统审计事件',
+    credits: '查看充值、退款与管理员操作流水',
+  }
+  const isRefreshing = Object.values(tableLoading).some(Boolean)
+
   return (
     <ConfigProvider
       locale={zhCN}
@@ -1196,127 +1196,129 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
         },
       }}
     >
-      <main className="console-antd-scope console-pro console-reference-page min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
+      <main className="console-antd-scope console-shell">
         {messageContextHolder}
         {modalContextHolder}
-        <header className="safe-area-top sticky top-0 z-40 border-b border-gray-200 bg-white/80 backdrop-blur dark:border-white/[0.08] dark:bg-gray-950/80">
-          <div className="safe-area-x safe-header-inner mx-auto flex max-w-7xl items-center justify-between">
-            <div>
-              <h1 className="text-[17px] font-bold tracking-tight">控制台</h1>
-              <p className="text-xs text-gray-500 dark:text-gray-400">用户管理、额度和计费记录</p>
+        <div className="console-layout-shell">
+          <aside className="console-sidebar" aria-label="控制台导航">
+            <div className="console-brand">
+              <span><AppLogoMark /></span>
+              <strong title={appName}>{appName}</strong>
             </div>
-            <Button icon={<ArrowLeftOutlined />} onClick={onClose}>返回生图</Button>
-          </div>
-        </header>
-
-        <div className="safe-area-x mx-auto grid max-w-7xl items-start gap-4 py-5 lg:grid-cols-[196px_minmax(0,1fr)]">
-          <aside className="self-start overflow-hidden rounded-xl border border-gray-200/70 bg-white shadow-sm dark:border-white/[0.08] dark:bg-gray-900 lg:sticky lg:top-20">
-            <div className="console-reference-brand">
-              <span><NavIcon type="usage" /></span>
-              <strong>{appName}</strong>
+            <div className="console-sidebar-nav">
+              {navItems.map((item) => (
+                <Button
+                  key={item.key}
+                  type="text"
+                  block
+                  onClick={() => setTab(item.key)}
+                  className={`console-nav-button ${tab === item.key ? 'is-active' : ''}`}
+                >
+                  {tab === item.key && <span className="console-nav-indicator" />}
+                  <span className="console-nav-content">
+                    <span className="console-nav-icon">
+                      <NavIcon type={item.key} />
+                    </span>
+                    <span className="console-nav-text">
+                      <span>{item.label}</span>
+                    </span>
+                  </span>
+                </Button>
+              ))}
             </div>
-            {navItems.map((item) => (
-              <Button
-                key={item.key}
-                type="text"
-                block
-                onClick={() => setTab(item.key)}
-                className={`console-nav-button relative text-left transition ${tab === item.key ? 'is-active text-blue-700 dark:text-blue-300' : 'text-gray-500 dark:text-gray-400'}`}
-              >
-                {tab === item.key && <span className="console-nav-indicator absolute left-0 top-2.5 bottom-2.5 rounded-r-full bg-blue-500" />}
-                <span className="console-nav-content flex items-center gap-2.5 px-3 py-2.5">
-                  <span className={`flex h-7 w-7 items-center justify-center rounded-lg transition ${tab === item.key ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-500 dark:bg-white/[0.06] dark:text-gray-400'}`}>
-                    <NavIcon type={item.key} />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-sm font-semibold">{item.label}</span>
-                    <span className="mt-0.5 block text-xs">{item.desc}</span>
-                  </span>
-                </span>
-              </Button>
-            ))}
+            <div className="console-sidebar-footer">
+              <ThemeToggle className="console-page-theme-toggle" tooltipPlacement="right" onResolvedThemeChange={setResolvedTheme} />
+              <SidebarUserMenu
+                user={sidebarUser}
+                className="console-sidebar-user-menu"
+                actions={[{ label: '返回生图', onClick: onClose }]}
+                onLogout={onLogout}
+              />
+            </div>
           </aside>
 
-          <section className="console-content-scroll min-w-0 overflow-hidden rounded-xl border border-gray-200/70 bg-white shadow-sm dark:border-white/[0.08] dark:bg-gray-900">
-            <div className="console-reference-topbar">
-              <div className="console-reference-actions">
-                <ThemeToggle className="console-page-theme-toggle" onResolvedThemeChange={setResolvedTheme} />
-                <div className="console-reference-user">
-                  <button type="button" onClick={onClose} title="返回生图" aria-label="返回生图">
-                    <ArrowLeftOutlined />
-                  </button>
-                  <span className="console-reference-avatar">{userInitial(currentUser)}</span>
-                  <strong>{currentUser.username}</strong>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
-                    <path d="m6 9 6 6 6-6" />
-                  </svg>
-                </div>
+          <section className="console-main">
+            <header className="console-topbar">
+              <div className="console-title-block">
+                <h1>{activeNavItem.label}</h1>
+                <p>{tabSubtitles[tab]}</p>
               </div>
-            </div>
-            <div className="console-content-body">
-            {tab === 'users' && (
-              <div className="console-panel-actionbar flex justify-end px-5 py-4">
+              <div className="console-page-actions">
                 <Button
-                  type="primary"
-                  icon={<UserAddOutlined />}
-                  onClick={() => {
-                    setDialogError(null)
-                    setShowCreateUser(true)
-                  }}
+                  className="console-refresh-button"
+                  icon={<ReloadOutlined />}
+                  loading={isRefreshing}
+                  onClick={() => void refresh()}
                 >
-                  创建用户
+                  刷新
                 </Button>
               </div>
-            )}
+            </header>
 
-            <div className="console-stats-grid grid gap-3 bg-gray-50/60 p-4 dark:bg-white/[0.02] sm:grid-cols-4">
-              <Stat label="用户总数" value={totals.users} trend="+12%" icon="users" />
-              <Stat label="启用账号" value={totals.enabled} trend="+8%" icon="enabled" />
-              <Stat label="总 Credits" value={totals.credits} trend="+23%" icon="credits" />
-              <Stat label="今日生成" value={totals.today} trend="+15%" icon="today" />
-            </div>
+            <div className="console-content-body">
+              {tab === 'users' && (
+                <div className="console-panel-actionbar flex justify-end px-5 py-4">
+                  <Button
+                    type="primary"
+                    icon={<UserAddOutlined />}
+                    onClick={() => {
+                      setDialogError(null)
+                      setShowCreateUser(true)
+                    }}
+                  >
+                    创建用户
+                  </Button>
+                </div>
+              )}
 
-            {error && (
-              <div className="mx-5 mt-4">
-                <Alert type="error" showIcon title={error} />
+              <div className="console-stats-grid grid gap-3 bg-gray-50/60 p-4 dark:bg-white/[0.02] sm:grid-cols-4">
+                <Stat label="用户总数" value={totals.users} trend="+12%" icon="users" />
+                <Stat label="启用账号" value={totals.enabled} trend="+8%" icon="enabled" />
+                <Stat label="总 Credits" value={totals.credits} trend="+23%" icon="credits" />
+                <Stat label="今日生成" value={totals.today} trend="+15%" icon="today" />
               </div>
-            )}
 
-            {tab === 'users' && (
-              <div className="console-table-panel p-5">
-                <Table<AppUser>
-                  className="console-compact-table"
-                  rowKey="id"
-                  size="small"
-                  columns={userColumns}
-                  dataSource={users}
-                  loading={tableLoading.users}
-                  pagination={compactPagination}
-                  scroll={{ x: 1660, y: TABLE_SCROLL_Y }}
-                  locale={tableLocale('暂无用户')}
-                />
-              </div>
-            )}
+              {error && (
+                <div className="mx-5 mt-4">
+                  <Alert type="error" showIcon title={error} />
+                </div>
+              )}
 
-            {tab === 'credits' && (
-              <div className="console-table-panel p-5">
-                <Table<CreditRecord>
-                  className="console-compact-table"
-                  rowKey="id"
-                  size="small"
-                  columns={creditColumns}
-                  dataSource={creditRecords}
-                  loading={tableLoading.credits}
-                  pagination={compactPagination}
-                  scroll={{ x: 1010, y: TABLE_SCROLL_Y }}
-                  locale={tableLocale('暂无充值或退款记录')}
-                />
-              </div>
-            )}
+              {tab === 'users' && (
+                <div className="console-table-panel p-5">
+                  <Table<AppUser>
+                    className="console-compact-table"
+                    rowKey="id"
+                    size="small"
+                    columns={userColumns}
+                    dataSource={users}
+                    loading={tableLoading.users}
+                    pagination={compactPagination}
+                    scroll={{ x: 1660, y: TABLE_SCROLL_Y }}
+                    locale={tableLocale('暂无用户')}
+                  />
+                </div>
+              )}
 
-            {tab === 'usage' && (
-              <div className="console-table-panel p-5">
-                <Form layout="vertical" className="console-filter-form mb-4 rounded-xl border border-gray-200/70 bg-gray-50 p-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
+              {tab === 'credits' && (
+                <div className="console-table-panel p-5">
+                  <Table<CreditRecord>
+                    className="console-compact-table"
+                    rowKey="id"
+                    size="small"
+                    columns={creditColumns}
+                    dataSource={creditRecords}
+                    loading={tableLoading.credits}
+                    pagination={compactPagination}
+                    scroll={{ x: 1010, y: TABLE_SCROLL_Y }}
+                    locale={tableLocale('暂无充值或退款记录')}
+                  />
+                </div>
+              )}
+
+              {tab === 'usage' && (
+                <div className="console-table-panel p-5">
+                  <Form layout="vertical" className="console-filter-form mb-4 rounded-xl border border-gray-200/70 bg-gray-50 p-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
                   <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     <Form.Item label="用户" className="mb-0">
                       <Select
@@ -1388,35 +1390,33 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
                         onChange={(checked) => setUsageFilters((filters) => ({ ...filters, onlyMine: checked, userId: checked ? '' : filters.userId }))}
                       />
                     </Form.Item>
-                    <Form.Item label=" " colon={false} className="mb-0 sm:col-span-2 xl:col-span-1 console-filter-actions">
-                      <div className="flex justify-end">
-                        <Space.Compact>
-                          <Button type="primary" icon={<SearchOutlined />} loading={tableLoading.usage} onClick={applyUsageFilters}>筛选</Button>
-                          <Button
-                            icon={<ReloadOutlined />}
-                            loading={tableLoading.usage}
-                            onClick={() => void resetUsageFilters()}
-                          >
-                            重置
-                          </Button>
-                        </Space.Compact>
+                    <Form.Item label=" " colon={false} className="mb-0 console-filter-actions">
+                      <div className="console-filter-action-row">
+                        <Button type="primary" icon={<SearchOutlined />} loading={tableLoading.usage} onClick={applyUsageFilters}>筛选</Button>
+                        <Button
+                          icon={<ReloadOutlined />}
+                          loading={tableLoading.usage}
+                          onClick={() => void resetUsageFilters()}
+                        >
+                          重置
+                        </Button>
                       </div>
                     </Form.Item>
                   </div>
                 </Form>
-                <Table<UsageRecord>
-                  className="console-compact-table"
-                  rowKey="id"
-                  size="small"
-                  columns={usageColumns}
-                  dataSource={usageRecords}
-                  loading={tableLoading.usage}
-                  pagination={{ ...compactPagination, pageSize: 6 }}
-                  scroll={{ x: 1180, y: TABLE_SCROLL_Y }}
-                  locale={tableLocale('暂无消费记录')}
-                />
-              </div>
-            )}
+                  <Table<UsageRecord>
+                    className="console-compact-table"
+                    rowKey="id"
+                    size="small"
+                    columns={usageColumns}
+                    dataSource={usageRecords}
+                    loading={tableLoading.usage}
+                    pagination={{ ...compactPagination, pageSize: 6 }}
+                    scroll={{ x: 1180, y: TABLE_SCROLL_Y }}
+                    locale={tableLocale('暂无消费记录')}
+                  />
+                </div>
+              )}
 
           {tab === 'settings' && (
             <div className="console-settings-panel grid gap-4 p-5 lg:grid-cols-2">
@@ -1549,30 +1549,24 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
                 </div>
               </section>
 
-              <section className="rounded-xl border border-gray-200/70 p-4 dark:border-white/[0.08] lg:col-span-2">
-                <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">S3 对象存储桶设置</h3>
-                <div className="mt-3 rounded-xl bg-gray-50 px-4 py-5 text-sm text-gray-500 dark:bg-white/[0.04] dark:text-gray-400">
-                  敬请期待。当前图片保存到本地存储空间。
-                </div>
-              </section>
             </div>
           )}
 
             {tab === 'audit' && (
               <div className="console-table-panel p-5">
-              <Table<AuditLog>
-                className="console-compact-table"
-                rowKey="id"
-                size="small"
-                columns={auditColumns}
-                dataSource={auditLogs}
-                loading={tableLoading.audit}
-                pagination={compactPagination}
-                scroll={{ x: 1110, y: TABLE_SCROLL_Y }}
-                locale={tableLocale('暂无审计日志')}
-              />
-            </div>
-          )}
+                  <Table<AuditLog>
+                    className="console-compact-table"
+                    rowKey="id"
+                    size="small"
+                    columns={auditColumns}
+                    dataSource={auditLogs}
+                    loading={tableLoading.audit}
+                    pagination={compactPagination}
+                    scroll={{ x: 1110, y: TABLE_SCROLL_Y }}
+                    locale={tableLocale('暂无审计日志')}
+                  />
+              </div>
+            )}
             </div>
         </section>
       </div>
