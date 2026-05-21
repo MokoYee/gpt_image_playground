@@ -322,17 +322,6 @@ export default function TaskCard({
             )}
             <button
               type="button"
-              onClick={() => void toggleTaskFavorite(task)}
-              className={`task-card-hover-action is-yellow${task.isFavorite ? ' is-active' : ''}`}
-              title={task.isFavorite ? '取消收藏' : '收藏记录'}
-              aria-label={task.isFavorite ? '取消收藏' : '收藏记录'}
-            >
-              <svg viewBox="0 0 24 24" fill={task.isFavorite ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="m12 2.8 2.8 5.7 6.3.9-4.5 4.4 1.1 6.2-5.7-3-5.7 3 1.1-6.2-4.5-4.4 6.3-.9L12 2.8Z" />
-              </svg>
-            </button>
-            <button
-              type="button"
               onClick={onReuse}
               className="task-card-hover-action is-blue"
               title="复用配置"
@@ -578,31 +567,6 @@ export default function TaskCard({
                   </svg>
                 </button>
               )}
-              <button
-                onClick={() =>
-                  void toggleTaskFavorite(task)
-                }
-                className={`p-1.5 rounded-md transition ${
-                  task.isFavorite
-                    ? 'text-yellow-400 hover:bg-yellow-50 dark:hover:bg-yellow-500/10'
-                    : 'text-gray-400 hover:text-yellow-400 hover:bg-yellow-50 dark:hover:bg-yellow-500/10'
-                }`}
-                title={task.isFavorite ? '取消收藏' : '收藏记录'}
-              >
-                <svg
-                  className="w-4 h-4"
-                  fill={task.isFavorite ? 'currentColor' : 'none'}
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
-                  />
-                </svg>
-              </button>
               <button
                 onClick={onReuse}
                 className="p-1.5 rounded-md hover:bg-blue-50 dark:hover:bg-blue-950/30 text-gray-400 hover:text-blue-500 transition"

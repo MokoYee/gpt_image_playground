@@ -61,6 +61,7 @@ function FavoriteImageTile({ item }: { item: FavoriteImageItem }) {
   const setConfirmDialog = useStore((state) => state.setConfirmDialog)
   const imageCount = item.task.outputImages?.length ?? 0
   const aspectRatio = thumb?.width && thumb.height ? `${thumb.width} / ${thumb.height}` : getAspectRatioFromSize(item.task.params.size)
+  const openDetail = () => setDetailTaskId(item.task.id)
 
   useEffect(() => {
     let cancelled = false
@@ -93,7 +94,7 @@ function FavoriteImageTile({ item }: { item: FavoriteImageItem }) {
   return (
     <article className="favorite-image-tile">
       <div className="favorite-image-media" style={{ aspectRatio }}>
-        <div className="favorite-image-button">
+        <button type="button" className="favorite-image-button" onClick={openDetail} aria-label="查看详情" title="查看详情">
           {thumb?.dataUrl ? (
             <img className="saveable-image" src={thumb.dataUrl} alt="" loading="lazy" />
           ) : (
@@ -105,27 +106,27 @@ function FavoriteImageTile({ item }: { item: FavoriteImageItem }) {
               </svg>
             </span>
           )}
-        </div>
+        </button>
         {imageCount > 1 && <span className="favorite-image-count">{item.imageIndex + 1}/{imageCount}</span>}
       </div>
       <div className="favorite-image-actions" data-no-drag-select onClick={(event) => event.stopPropagation()}>
-        <button type="button" onClick={() => setDetailTaskId(item.task.id)} title="详情" aria-label="详情">
+        <button type="button" onClick={openDetail} title="详情" aria-label="详情">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h9" />
           </svg>
-          <span>详情</span>
+          <span>查看详情</span>
         </button>
         <button type="button" onClick={() => void toggleTaskFavorite(item.task)} title="取消收藏" aria-label="取消收藏" className="is-active">
           <svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.8 1-6.1-4.4-4.3 6.1-.9L12 3Z" />
           </svg>
-          <span>取消</span>
+          <span>取消收藏</span>
         </button>
         <button type="button" onClick={handleDelete} title="删除记录" aria-label="删除记录" className="is-danger">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M3 6h18M8 6V4h8v2m-10 0 1 15h10l1-15M10 11v6m4-6v6" />
           </svg>
-          <span>删除</span>
+          <span>删除记录</span>
         </button>
       </div>
     </article>
@@ -192,7 +193,7 @@ export default function FavoritePage() {
           columnClassName="favorite-masonry-column"
         >
           {favoriteImages.map((item) => (
-            <FavoriteImageTile key={`${item.task.id}:${item.imageId}`} item={item} />
+            <FavoriteImageTile key={`${item.task.id}:${item.imageId}:${item.imageIndex}`} item={item} />
           ))}
         </Masonry>
       ) : (
