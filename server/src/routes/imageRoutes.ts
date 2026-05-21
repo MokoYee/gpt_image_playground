@@ -31,6 +31,26 @@ const GenerateSchema = z.object({
   maskDataUrl: z.string().startsWith('data:').optional(),
 })
 
+const TaskStatusSchema = z.enum(['queued', 'running', 'done', 'error', 'cancelled'])
+
+const ImageTaskListQuerySchema = PaginationSchema.extend({
+  status: TaskStatusSchema.optional(),
+  model: z.string().trim().max(120).optional(),
+  quality: z.enum(['auto', 'low', 'medium', 'high']).optional(),
+  keyword: z.string().trim().max(500).optional(),
+  favorite: z.preprocess((value) => {
+    if (value === true || value === 'true') return true
+    if (value === false || value === 'false') return false
+    return undefined
+  }, z.boolean().optional()),
+  from: z.coerce.number().optional(),
+  to: z.coerce.number().optional(),
+})
+
+const TaskIdsBodySchema = z.object({
+  taskIds: z.array(z.string().uuid()).min(1).max(100),
+})
+
 const FILE_LINK_TTL_MS = 10 * 60 * 1000
 
 const MODEL_ALIAS_CANDIDATES: Record<string, string[]> = {
@@ -344,17 +364,50 @@ export async function registerImageRoutes(app: FastifyInstance) {
   })
 
   app.get('/api/me/image-tasks', { preHandler: requireAuth }, async (request) => {
-    const query = PaginationSchema.parse(request.query)
+    const query = ImageTaskListQuerySchema.parse(request.query)
+    const values: unknown[] = [request.user.id]
+    const where = ['t.user_id = $1', 't.hidden_at is null']
+    if (query.status) {
+      values.push(query.status)
+      where.push(`t.status = $${values.length}`)
+    }
+    if (query.model) {
+      values.push(`%${query.model}%`)
+      where.push(`t.api_model ilike $${values.length}`)
+    }
+    if (query.quality) {
+      values.push(query.quality)
+      where.push(`t.params->>'quality' = $${values.length}`)
+    }
+    if (query.keyword) {
+      values.push(`%${query.keyword}%`)
+      where.push(`t.prompt ilike $${values.length}`)
+    }
+    if (query.favorite === true) {
+      where.push('t.favorite_at is not null')
+    } else if (query.favorite === false) {
+      where.push('t.favorite_at is null')
+    }
+    if (query.from != null) {
+      values.push(new Date(query.from))
+      where.push(`t.created_at >= $${values.length}`)
+    }
+    if (query.to != null) {
+      values.push(new Date(query.to))
+      where.push(`t.created_at <= $${values.length}`)
+    }
+    values.push(query.pageSize, toOffset(query.page, query.pageSize))
+    const orderBy = query.favorite === true ? 't.favorite_at desc nulls last, t.created_at desc' : 't.created_at desc'
     const result = await app.context.db.query(
       `
         select t.*, t.id::text, t.user_id::text, u.username, count(*) over() as total
         from image_tasks t
         join users u on u.id = t.user_id
-        where t.user_id = $1 and t.hidden_at is null
-        order by t.created_at desc
-        limit $2 offset $3
+        where ${where.join(' and ')}
+        order by ${orderBy}
+        limit $${values.length - 1} offset $${values.length}
       `,
-      [request.user.id, query.pageSize, toOffset(query.page, query.pageSize)],
+      values,
     )
     const imageMap = await loadTaskImages(app, result.rows.map((row) => row.id))
     return {
@@ -363,6 +416,62 @@ export async function registerImageRoutes(app: FastifyInstance) {
       page: query.page,
       pageSize: query.pageSize,
     }
+  })
+
+  app.patch('/api/images/tasks/favorite', { preHandler: requireAuth }, async (request) => {
+    const body = TaskIdsBodySchema.extend({ favorite: z.boolean() }).parse(request.body)
+    const uniqueTaskIds = Array.from(new Set(body.taskIds))
+    const result = await app.context.db.query(
+      `
+        update image_tasks
+        set favorite_at = case when $3 then now() else null end
+        where id = any($1::uuid[]) and user_id = $2 and hidden_at is null
+        returning id::text
+      `,
+      [uniqueTaskIds, request.user.id, body.favorite],
+    )
+    const updatedTaskIds = result.rows.map((row) => row.id)
+    if (!updatedTaskIds.length) throw notFound('任务不存在')
+    await writeAuditLog(
+      app.context.db,
+      request.user,
+      body.favorite ? 'image.task.favorite.batch' : 'image.task.unfavorite.batch',
+      'image_task_batch',
+      null,
+      { count: updatedTaskIds.length, taskIds: updatedTaskIds },
+    )
+    return { ok: true, updatedTaskIds }
+  })
+
+  app.post('/api/images/tasks/batch-delete', { preHandler: requireAuth }, async (request) => {
+    const body = TaskIdsBodySchema.parse(request.body)
+    const uniqueTaskIds = Array.from(new Set(body.taskIds))
+    const result = await app.context.db.query(
+      `
+        update image_tasks
+        set hidden_at = now()
+        where id = any($1::uuid[])
+          and user_id = $2
+          and hidden_at is null
+          and status in ('done', 'error', 'cancelled')
+        returning id::text
+      `,
+      [uniqueTaskIds, request.user.id],
+    )
+    const deletedTaskIds = result.rows.map((row) => row.id)
+    const deletedSet = new Set(deletedTaskIds)
+    const skippedTaskIds = uniqueTaskIds.filter((id) => !deletedSet.has(id))
+    if (deletedTaskIds.length) {
+      await writeAuditLog(
+        app.context.db,
+        request.user,
+        'image.task.hide.batch',
+        'image_task_batch',
+        null,
+        { count: deletedTaskIds.length, taskIds: deletedTaskIds },
+      )
+    }
+    return { ok: true, deletedTaskIds, skippedTaskIds }
   })
 
   app.post('/api/images/tasks/:taskId/cancel', { preHandler: requireAuth }, async (request) => {

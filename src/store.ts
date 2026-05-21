@@ -30,7 +30,7 @@ import {
   clearImages,
   storeImage,
 } from './lib/db'
-import { callImageApi, cancelImageTask, createImageTask, createProtectedImageLink, deleteImageTask, favoriteImageTask, fetchProtectedImageDataUrl, readImageTask, readMyImageTasks, type ServerImageTask } from './lib/api'
+import { callImageApi, cancelImageTask, createImageTask, createProtectedImageLink, deleteImageTask, deleteImageTasks, favoriteImageTask, favoriteImageTasks, fetchProtectedImageDataUrl, readImageTask, readMyImageTasks, type ImageTaskListParams, type ServerImageTask } from './lib/api'
 import { IMAGE_FETCH_CORS_HINT } from './lib/imageApiShared'
 import { getCustomQueuedImageResult } from './lib/openaiCompatibleImageApi'
 import { validateMaskMatchesImage } from './lib/canvasImage'
@@ -188,6 +188,16 @@ async function upsertServerTask(serverTask: ServerImageTask) {
   return localTask
 }
 
+export async function loadServerTaskToStore(serverTaskId: string) {
+  const serverTask = await readImageTask(serverTaskId)
+  return upsertServerTask(serverTask)
+}
+
+export async function openServerTaskDetail(serverTaskId: string) {
+  const localTask = await loadServerTaskToStore(serverTaskId)
+  useStore.getState().setDetailTaskId(localTask.id)
+}
+
 async function markOrphanedServerTasksFailed(serverTasks: ServerImageTask[]) {
   const sessionUser = readAuthSession()?.user
   if (!sessionUser) return
@@ -258,14 +268,21 @@ async function pollServerTask(taskId: string) {
   }
 }
 
-export async function syncServerHistory() {
+export async function syncServerTaskList(params: ImageTaskListParams = {}) {
   const sessionUser = readAuthSession()?.user
-  if (!sessionUser) return
-  const serverTasks = await readMyImageTasks()
+  if (!sessionUser) return []
+  const serverTasks = await readMyImageTasks(params)
   for (const serverTask of serverTasks.reverse()) {
     await upsertServerTask(serverTask)
     if (serverTask.status === 'queued' || serverTask.status === 'running') scheduleServerTaskPoll(serverTask.id)
   }
+  return serverTasks
+}
+
+export async function syncServerHistory() {
+  const sessionUser = readAuthSession()?.user
+  if (!sessionUser) return
+  const serverTasks = await syncServerTaskList()
   await markOrphanedServerTasksFailed(serverTasks)
 }
 
@@ -285,10 +302,45 @@ export async function cancelQueuedTask(task: TaskRecord) {
 
 export async function toggleTaskFavorite(task: TaskRecord) {
   const nextFavorite = !task.isFavorite
-  if (task.serverTaskId && readAuthSession()) {
-    await favoriteImageTask(task.serverTaskId, nextFavorite)
+  const { showToast } = useStore.getState()
+  try {
+    if (task.serverTaskId && readAuthSession()) {
+      await favoriteImageTask(task.serverTaskId, nextFavorite)
+    }
+    updateTaskInStore(task.id, { isFavorite: nextFavorite })
+    showToast(nextFavorite ? '已收藏' : '已取消收藏', 'success')
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error || '操作失败')
+    showToast(`${nextFavorite ? '收藏' : '取消收藏'}失败：${message}`, 'error')
+    throw error
   }
-  updateTaskInStore(task.id, { isFavorite: nextFavorite })
+}
+
+export async function setServerTaskFavoriteState(serverTaskId: string, favorite: boolean) {
+  await favoriteImageTask(serverTaskId, favorite)
+  const localTask = useStore.getState().tasks.find((task) => task.serverTaskId === serverTaskId)
+  if (localTask) updateTaskInStore(localTask.id, { isFavorite: favorite })
+}
+
+export async function setMultipleTasksFavorite(taskIds: string[], favorite: boolean) {
+  const { tasks, showToast } = useStore.getState()
+  const uniqueTaskIds = Array.from(new Set(taskIds))
+  const targets = tasks.filter((task) => uniqueTaskIds.includes(task.id))
+  if (!targets.length) return
+
+  const serverTaskIds = targets
+    .map((task) => task.serverTaskId)
+    .filter((id): id is string => Boolean(id))
+
+  if (serverTaskIds.length && readAuthSession()) {
+    await favoriteImageTasks(serverTaskIds, favorite)
+  }
+
+  for (const task of targets) {
+    updateTaskInStore(task.id, { isFavorite: favorite })
+  }
+
+  showToast(favorite ? `已收藏 ${targets.length} 条记录` : `已取消收藏 ${targets.length} 条记录`, 'success')
 }
 
 export async function ensureImageCached(id: string): Promise<string | undefined> {
@@ -1740,6 +1792,20 @@ export async function removeMultipleTasks(taskIds: string[]) {
   }
 
   showToast(`已删除 ${deletedIds.length} 条记录`, 'success')
+}
+
+export async function deleteServerHistoryTasks(serverTaskIds: string[]) {
+  const uniqueServerTaskIds = Array.from(new Set(serverTaskIds))
+  if (!uniqueServerTaskIds.length) return { deletedTaskIds: [], skippedTaskIds: [] }
+  const result = await deleteImageTasks(uniqueServerTaskIds)
+  if (result.deletedTaskIds.length) {
+    const deletedServerIds = new Set(result.deletedTaskIds)
+    const localTaskIds = useStore.getState().tasks
+      .filter((task) => task.serverTaskId && deletedServerIds.has(task.serverTaskId))
+      .map((task) => task.id)
+    if (localTaskIds.length) await removeLocalTasks(localTaskIds)
+  }
+  return result
 }
 
 /** 删除单条任务 */

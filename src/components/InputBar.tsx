@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback, useState, useMemo, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { useStore, submitTask, addImageFromFile, updateTaskInStore, removeMultipleTasks, getCachedImage, ensureImageCached } from '../store'
+import { useStore, submitTask, addImageFromFile, setMultipleTasksFavorite, removeMultipleTasks, getCachedImage, ensureImageCached } from '../store'
 import { DEFAULT_PARAMS } from '../types'
 import { getActiveApiProfile, normalizeSettings } from '../lib/apiProfiles'
 import { getChangedParams, getOutputImageLimitForSettings, normalizeParamsForSettings } from '../lib/paramCompatibility'
@@ -479,10 +479,8 @@ export default function InputBar({ variant = 'floating' }: InputBarProps = {}) {
         ? `确定要收藏选中的 ${selectedTaskIds.length} 条记录吗？`
         : `确定要取消收藏选中的 ${selectedTaskIds.length} 条记录吗？`,
       confirmText: newFavoriteState ? '确认收藏' : '确认取消',
-      action: () => {
-        selectedTaskIds.forEach((id) => {
-          updateTaskInStore(id, { isFavorite: newFavoriteState })
-        })
+      action: async () => {
+        await setMultipleTasksFavorite(selectedTaskIds, newFavoriteState)
         clearSelection()
       },
     })

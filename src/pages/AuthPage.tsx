@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { authenticateUser, DEFAULT_APP_NAME, readPublicSettings, registerUser } from '../lib/auth'
 import type { AppUser } from '../lib/auth'
-import ThemeToggle from './ThemeToggle'
+import ThemeToggle from '../components/ThemeToggle'
+import AppLogoMark from '../components/AppLogoMark'
 import { readThemePreference, resolveThemePreference } from '../lib/theme'
 import type { ResolvedTheme } from '../lib/theme'
 import { useStore } from '../store'
@@ -58,15 +59,6 @@ function ArrowRightIcon() {
     <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden="true">
       <path d="M5 12h14" />
       <path d="m13 6 6 6-6 6" />
-    </svg>
-  )
-}
-
-function BrandIcon() {
-  return (
-    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M5.5 14.5a4.5 4.5 0 0 1 4.5-4.5h4a4.5 4.5 0 0 1 4.5 4.5v.5a3 3 0 0 1-3 3h-1.2l-1.8 2-1.8-2H8a3 3 0 0 1-3-3v-.5Z" />
-      <path d="M8.2 10.4 7.5 7.2M15.8 10.4l.7-3.2M9 14h.01M15 14h.01" />
     </svg>
   )
 }
@@ -147,8 +139,6 @@ export default function AuthPage({ appName, onAppNameChange, onAuthenticated }: 
   const [registrationOpen, setRegistrationOpen] = useState<boolean | null>(null)
   const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() => resolveThemePreference(readThemePreference()))
   const showToast = useStore((state) => state.showToast)
-  const logoText = (appName.trim() || DEFAULT_APP_NAME).slice(0, 1).toUpperCase()
-
   useEffect(() => {
     void readPublicSettings()
       .then((settings) => {
@@ -238,11 +228,8 @@ export default function AuthPage({ appName, onAppNameChange, onAuthenticated }: 
           </div>
 
           <header className="auth-login-header relative z-20 flex items-center justify-between px-[18px] pt-[17px]">
-            <div className="flex items-center gap-2 text-slate-100">
-              <span className="flex h-5 w-5 items-center justify-center rounded-md text-blue-100">
-                <BrandIcon />
-              </span>
-              <span className="text-[11px] font-semibold tracking-tight">{appName}</span>
+            <div className="auth-login-brand-lockup">
+              <AppLogoMark variant="wordmark" theme={resolvedTheme} alt={appName} className="auth-login-wordmark" />
             </div>
           </header>
 
@@ -250,10 +237,7 @@ export default function AuthPage({ appName, onAppNameChange, onAuthenticated }: 
             <>
               <form onSubmit={handleLogin} noValidate className="auth-login-form relative z-20">
                 <div className="auth-login-form-brand">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-xl text-blue-100">
-                    <BrandIcon />
-                  </span>
-                  <span>{appName}</span>
+                  <AppLogoMark variant="wordmark" theme={resolvedTheme} alt={appName} className="auth-login-wordmark" />
                 </div>
                 <div className="auth-login-copy">
                   <h1>

@@ -31,6 +31,8 @@ export interface ServerImageTask {
   queuedAt?: number | null
   startedAt?: number | null
   finishedAt?: number | null
+  hiddenAt?: number | null
+  favoriteAt?: number | null
   queuePosition?: number | null
   creditsEstimated?: number | null
   creditsReserved?: number | null
@@ -42,6 +44,25 @@ export interface ServerImageTask {
   revisedPromptByImage?: Record<string, string>
   isFavorite?: boolean
   outputImages: ServerImageFile[]
+}
+
+export interface ImageTaskListParams {
+  page?: number
+  pageSize?: number
+  status?: ServerImageTask['status'] | 'all' | ''
+  model?: string
+  quality?: TaskParams['quality'] | ''
+  keyword?: string
+  favorite?: boolean
+  from?: number | null
+  to?: number | null
+}
+
+export interface ServerImageTaskPage {
+  items: ServerImageTask[]
+  total: number
+  page: number
+  pageSize: number
 }
 
 async function authedJson<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -112,8 +133,26 @@ export async function readImageTask(taskId: string): Promise<ServerImageTask> {
   return result.task
 }
 
-export async function readMyImageTasks(): Promise<ServerImageTask[]> {
-  const result = await authedJson<{ items: ServerImageTask[] }>('/api/me/image-tasks?pageSize=100')
+function buildImageTaskListSearch(params: ImageTaskListParams = {}) {
+  const search = new URLSearchParams()
+  search.set('page', String(params.page ?? 1))
+  search.set('pageSize', String(params.pageSize ?? 20))
+  if (params.status && params.status !== 'all') search.set('status', params.status)
+  if (params.model?.trim()) search.set('model', params.model.trim())
+  if (params.quality) search.set('quality', params.quality)
+  if (params.keyword?.trim()) search.set('keyword', params.keyword.trim())
+  if (typeof params.favorite === 'boolean') search.set('favorite', String(params.favorite))
+  if (params.from != null) search.set('from', String(params.from))
+  if (params.to != null) search.set('to', String(params.to))
+  return search
+}
+
+export async function readMyImageTaskPage(params: ImageTaskListParams = {}): Promise<ServerImageTaskPage> {
+  return authedJson<ServerImageTaskPage>(`/api/me/image-tasks?${buildImageTaskListSearch(params).toString()}`)
+}
+
+export async function readMyImageTasks(params: ImageTaskListParams = {}): Promise<ServerImageTask[]> {
+  const result = await readMyImageTaskPage({ pageSize: 100, ...params })
   return result.items
 }
 
@@ -132,8 +171,23 @@ export async function favoriteImageTask(taskId: string, favorite: boolean): Prom
   })
 }
 
+export async function favoriteImageTasks(taskIds: string[], favorite: boolean): Promise<string[]> {
+  const result = await authedJson<{ updatedTaskIds: string[] }>('/api/images/tasks/favorite', {
+    method: 'PATCH',
+    body: JSON.stringify({ taskIds, favorite }),
+  })
+  return result.updatedTaskIds
+}
+
 export async function deleteImageTask(taskId: string): Promise<void> {
   await authedJson(`/api/images/tasks/${taskId}`, { method: 'DELETE' })
+}
+
+export async function deleteImageTasks(taskIds: string[]): Promise<{ deletedTaskIds: string[]; skippedTaskIds: string[] }> {
+  return authedJson('/api/images/tasks/batch-delete', {
+    method: 'POST',
+    body: JSON.stringify({ taskIds }),
+  })
 }
 
 export async function readAdminImageTasks(params: URLSearchParams = new URLSearchParams()): Promise<ServerImageTask[]> {

@@ -18,6 +18,8 @@ const MODEL_ALIAS_CANDIDATES: Record<string, string[]> = {
 interface ImageQueueConfig {
   storageRoot: string
   nodeEnv: string
+  imageApiDevBaseUrl?: string
+  imageApiDevHostHeader?: string
   logger?: {
     info: (value: unknown, message?: string) => void
     error: (value: unknown, message?: string) => void
@@ -106,6 +108,18 @@ function resolveTaskModelProfiles(settings: Awaited<ReturnType<typeof readSystem
     seen.add(key)
     return true
   })
+}
+
+function applyDevelopmentProviderOverride(profile: ModelProfile, config: ImageQueueConfig): ModelProfile {
+  const devBaseUrl = config.imageApiDevBaseUrl?.trim()
+  if (config.nodeEnv === 'production' || !devBaseUrl) return profile
+  const devHostHeader = config.imageApiDevHostHeader?.trim()
+  return {
+    ...profile,
+    name: `${profile.name}（开发公网）`,
+    baseUrl: devBaseUrl.replace(/\/+$/, ''),
+    upstreamHostHeader: devHostHeader || undefined,
+  }
 }
 
 export class ImageQueueWorker {
@@ -217,7 +231,7 @@ export class ImageQueueWorker {
       let providerResult: Awaited<ReturnType<typeof callImageProvider>> | null = null
       let lastProviderError: unknown
       for (let index = 0; index < modelProfiles.length; index++) {
-        const modelProfile = modelProfiles[index]
+        const modelProfile = applyDevelopmentProviderOverride(modelProfiles[index], this.config)
         try {
           providerResult = await callImageProvider(modelProfile, {
             prompt: task.prompt,

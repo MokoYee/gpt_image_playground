@@ -23,6 +23,8 @@ const ConfigSchema = z.object({
   JWT_SECRET: z.string().min(32, 'JWT_SECRET 至少 32 位'),
   JWT_EXPIRES_IN_SECONDS: z.coerce.number().int().positive().default(60 * 60 * 24 * 7),
   IMAGE_STORAGE_PATH: z.string().default('/data/images'),
+  IMAGE_API_DEV_BASE_URL: z.string().trim().default(''),
+  IMAGE_API_DEV_HOST_HEADER: z.string().trim().default(''),
   ADMIN_USERNAME: z.string().default('admin'),
   ADMIN_EMAIL: z.string().email().default('admin@example.com'),
   ADMIN_PASSWORD: z.string().min(8).optional(),

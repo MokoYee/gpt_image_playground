@@ -32,6 +32,7 @@ export interface SystemSettings {
 export interface ImageApiSettings {
   provider: 'openai-compatible'
   baseUrl: string
+  upstreamHostHeader?: string
   apiKey?: string
   model: string
   apiMode: 'images' | 'responses'
@@ -59,7 +60,7 @@ const DEFAULT_AUTH_SETTINGS: AuthSettings = {
 }
 
 const DEFAULT_SITE_SETTINGS: SiteSettings = {
-  appName: 'GPT Image Playground',
+  appName: 'MQIMAGE',
 }
 
 const DEFAULT_STORAGE_SETTINGS: StorageSettings = {
@@ -86,7 +87,7 @@ function normalizeSiteSettings(value: unknown): SiteSettings {
   const record = value && typeof value === 'object' ? value as Record<string, unknown> : {}
   const appName = typeof record.appName === 'string' ? record.appName.trim() : ''
   return {
-    appName: appName || DEFAULT_SITE_SETTINGS.appName,
+    appName: !appName || appName === 'GPT Image Playground' ? DEFAULT_SITE_SETTINGS.appName : appName,
   }
 }
 
