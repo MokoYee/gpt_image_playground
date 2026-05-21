@@ -2,6 +2,7 @@ export type ThemePreference = 'system' | 'light' | 'dark'
 export type ResolvedTheme = 'light' | 'dark'
 
 export const THEME_STORAGE_KEY = 'gpt-image-playground.theme'
+export const DEFAULT_THEME_PREFERENCE: ThemePreference = 'dark'
 
 const DARK_THEME_QUERY = '(prefers-color-scheme: dark)'
 
@@ -12,9 +13,9 @@ function isThemePreference(value: string | null): value is ThemePreference {
 export function readThemePreference(): ThemePreference {
   try {
     const saved = window.localStorage.getItem(THEME_STORAGE_KEY)
-    return isThemePreference(saved) ? saved : 'system'
+    return isThemePreference(saved) ? saved : DEFAULT_THEME_PREFERENCE
   } catch {
-    return 'system'
+    return DEFAULT_THEME_PREFERENCE
   }
 }
 
