@@ -57,6 +57,7 @@ interface ConsolePageProps {
 }
 
 type ConsoleTab = 'users' | 'credits' | 'usage' | 'settings' | 'audit'
+type ConsoleTableKey = 'users' | 'credits' | 'usage' | 'audit'
 type ModelApiMode = ModelProfile['apiMode']
 type ModelEnvironment = ModelProfile['environment']
 
@@ -68,6 +69,13 @@ const EMPTY_SETTINGS_DRAFT = {
   globalConcurrency: '',
   defaultUserConcurrency: '',
   maxQueueSize: '',
+}
+
+const EMPTY_TABLE_LOADING: Record<ConsoleTableKey, boolean> = {
+  users: false,
+  credits: false,
+  usage: false,
+  audit: false,
 }
 
 const SETTINGS_PLACEHOLDERS = {
@@ -418,6 +426,7 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
   const [creditRecords, setCreditRecords] = useState<CreditRecord[]>([])
   const [usageRecords, setUsageRecords] = useState<UsageRecord[]>([])
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([])
+  const [tableLoading, setTableLoading] = useState<Record<ConsoleTableKey, boolean>>(EMPTY_TABLE_LOADING)
   const [systemSettings, setSystemSettings] = useState<SystemSettings | null>(null)
   const [modelDrafts, setModelDrafts] = useState<ModelProfile[]>([])
   const [settingsDraft, setSettingsDraft] = useState(EMPTY_SETTINGS_DRAFT)
@@ -472,7 +481,20 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
     })
   }
 
+  const setConsoleTableLoading = (keys: ConsoleTableKey[], loading: boolean) => {
+    setTableLoading((current) => {
+      const next = { ...current }
+      keys.forEach((key) => {
+        next[key] = loading
+      })
+      return next
+    })
+  }
+
   const refresh = async () => {
+    const keys: ConsoleTableKey[] = ['users', 'credits', 'usage', 'audit']
+    setError(null)
+    setConsoleTableLoading(keys, true)
     try {
       const [nextUsers, nextCreditRecords, nextUsageRecords, nextAuditLogs] = await Promise.all([
         listUsers(),
@@ -486,6 +508,8 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
       setAuditLogs(nextAuditLogs)
     } catch (error) {
       setError(error instanceof Error ? error.message : '数据加载失败')
+    } finally {
+      setConsoleTableLoading(keys, false)
     }
   }
 
@@ -746,11 +770,28 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
 
   const applyUsageFilters = async () => {
     setError(null)
+    setConsoleTableLoading(['usage'], true)
     try {
       setUsageRecords(applyUsageClientFilters(await readUsageRecords(true, buildUsageFilters())))
       messageApi.success('筛选已应用')
     } catch (error) {
       setError(error instanceof Error ? error.message : '消费记录加载失败')
+    } finally {
+      setConsoleTableLoading(['usage'], false)
+    }
+  }
+
+  const resetUsageFilters = async () => {
+    setError(null)
+    setUsageFilters(EMPTY_USAGE_FILTERS)
+    setConsoleTableLoading(['usage'], true)
+    try {
+      setUsageRecords(await readUsageRecords(true))
+      messageApi.success('筛选已重置')
+    } catch (error) {
+      setError(error instanceof Error ? error.message : '消费记录加载失败')
+    } finally {
+      setConsoleTableLoading(['usage'], false)
     }
   }
 
@@ -1048,12 +1089,12 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
     {
       title: '操作',
       key: 'actions',
-      width: 190,
+      width: 80,
       fixed: 'right',
       render: (_, record) => {
         const firstImage = record.imageFiles?.[0]
         return (
-          <Space size={6} wrap={false}>
+          <Space size={4} wrap={false} className="console-usage-actions">
             <Button
               size="small"
               className="console-text-action"
@@ -1249,6 +1290,7 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
                   size="small"
                   columns={userColumns}
                   dataSource={users}
+                  loading={tableLoading.users}
                   pagination={compactPagination}
                   scroll={{ x: 1660, y: TABLE_SCROLL_Y }}
                   locale={tableLocale('暂无用户')}
@@ -1264,6 +1306,7 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
                   size="small"
                   columns={creditColumns}
                   dataSource={creditRecords}
+                  loading={tableLoading.credits}
                   pagination={compactPagination}
                   scroll={{ x: 1010, y: TABLE_SCROLL_Y }}
                   locale={tableLocale('暂无充值或退款记录')}
@@ -1348,18 +1391,11 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
                     <Form.Item label=" " colon={false} className="mb-0 sm:col-span-2 xl:col-span-1 console-filter-actions">
                       <div className="flex justify-end">
                         <Space.Compact>
-                          <Button type="primary" icon={<SearchOutlined />} onClick={applyUsageFilters}>筛选</Button>
+                          <Button type="primary" icon={<SearchOutlined />} loading={tableLoading.usage} onClick={applyUsageFilters}>筛选</Button>
                           <Button
                             icon={<ReloadOutlined />}
-                            onClick={() => {
-                              setUsageFilters(EMPTY_USAGE_FILTERS)
-                              void readUsageRecords(true)
-                                .then((records) => {
-                                  setUsageRecords(records)
-                                  messageApi.success('筛选已重置')
-                                })
-                                .catch((error) => setError(error instanceof Error ? error.message : '消费记录加载失败'))
-                            }}
+                            loading={tableLoading.usage}
+                            onClick={() => void resetUsageFilters()}
                           >
                             重置
                           </Button>
@@ -1374,6 +1410,7 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
                   size="small"
                   columns={usageColumns}
                   dataSource={usageRecords}
+                  loading={tableLoading.usage}
                   pagination={{ ...compactPagination, pageSize: 6 }}
                   scroll={{ x: 1180, y: TABLE_SCROLL_Y }}
                   locale={tableLocale('暂无消费记录')}
@@ -1529,6 +1566,7 @@ export default function ConsolePage({ currentUser, appName, onAppNameChange, onC
                 size="small"
                 columns={auditColumns}
                 dataSource={auditLogs}
+                loading={tableLoading.audit}
                 pagination={compactPagination}
                 scroll={{ x: 1110, y: TABLE_SCROLL_Y }}
                 locale={tableLocale('暂无审计日志')}
