@@ -31,60 +31,81 @@ const CREATE_MODEL_ALIASES: Record<CreateModelOption, string[]> = {
   'image-2': ['image-2', 'gpt-image-2'],
 }
 
+const CREATE_MODEL_META: Record<CreateModelOption, {
+  badges: string[]
+  summary: string
+  menuLabel: string
+  theme: 'classic' | 'balanced' | 'pro'
+  preview: string
+}> = {
+  'image-1': {
+    badges: ['兼容', '稳定'],
+    summary: '基础生成 · 适合旧版接口与稳定配置',
+    menuLabel: '兼容模式',
+    theme: 'classic',
+    preview: '/model-preview-image-1.png',
+  },
+  'image-1.5': {
+    badges: ['推荐', '均衡'],
+    summary: '均衡质量 · 速度与画面表现更平衡',
+    menuLabel: '平衡质量',
+    theme: 'balanced',
+    preview: '/model-preview-image-1-5.png',
+  },
+  'image-2': {
+    badges: ['默认', '高质量'],
+    summary: '默认推荐 · 更强细节与复杂提示词理解',
+    menuLabel: '默认推荐',
+    theme: 'pro',
+    preview: '/model-preview-image-2.png',
+  },
+}
+
 function getCreateModelOption(model: string): CreateModelOption {
   return CREATE_MODEL_OPTIONS.find((option) => CREATE_MODEL_ALIASES[option].includes(model)) ?? 'image-2'
 }
 
+function getCreateModelRequestId(model: CreateModelOption) {
+  return model === 'image-2' ? 'gpt-image-2' : model
+}
+
+function CreateModelIcon({ model }: { model: CreateModelOption }) {
+  const meta = CREATE_MODEL_META[model]
+
+  return (
+    <div className={`create-model-artwork is-${meta.theme}`} aria-hidden="true">
+      <img src={meta.preview} alt="" draggable={false} />
+      <i className="create-model-artwork-shine" />
+      <b className="create-model-quality-meter"><i /><i /><i /></b>
+    </div>
+  )
+}
+
+function formatQueueTime(task: TaskRecord) {
+  if (task.elapsed != null && task.elapsed > 0) return `${Math.max(1, Math.round(task.elapsed / 1000))}秒`
+  return '00:18'
+}
+
 function formatTaskRuntime(task: TaskRecord) {
-  const startedAt = task.createdAt || Date.now()
-  const elapsedMs = task.elapsed ?? Math.max(0, Date.now() - startedAt)
-  const seconds = Math.max(1, Math.round(elapsedMs / 1000))
-  if (seconds < 60) return `${seconds}秒`
-  return `${Math.floor(seconds / 60)}分${seconds % 60}秒`
+  const elapsed = task.elapsed ?? Math.max(0, Date.now() - task.createdAt)
+  const seconds = Math.max(1, Math.floor(elapsed / 1000))
+  const minutes = Math.floor(seconds / 60)
+  const remainingSeconds = seconds % 60
+  return `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`
 }
 
 function formatQueueMeta(task: TaskRecord) {
-  const quality = task.params.quality === 'high' ? '高质量' : '标准'
-  const size = task.params.size || '默认尺寸'
-  return [task.apiModel || task.apiProfileName || '当前配置', size, quality].join(' · ')
+  const model = task.apiModel || 'image'
+  return `${model} · ${formatQueueTime(task)}`
 }
 
-function CreateSectionIcon({ type }: { type: 'grid' | 'download' | 'rerun' | 'delete' }) {
-  if (type === 'grid') {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <rect x="4" y="4" width="6" height="6" rx="1.4" />
-        <rect x="14" y="4" width="6" height="6" rx="1.4" />
-        <rect x="4" y="14" width="6" height="6" rx="1.4" />
-        <rect x="14" y="14" width="6" height="6" rx="1.4" />
-      </svg>
-    )
-  }
-  if (type === 'download') {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M12 4v10" />
-        <path d="m7 10 5 5 5-5" />
-        <path d="M5 20h14" />
-      </svg>
-    )
-  }
-  if (type === 'rerun') {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M21 12a9 9 0 0 1-15.5 6.2" />
-        <path d="M3 12A9 9 0 0 1 18.5 5.8" />
-        <path d="M18 2v4h4" />
-        <path d="M6 22v-4H2" />
-      </svg>
-    )
-  }
+function CreateSectionIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M3 6h18" />
-      <path d="M8 6V4h8v2" />
-      <path d="m6 6 1 15h10l1-15" />
-      <path d="M10 11v6M14 11v6" />
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M21 12a9 9 0 0 1-15.5 6.2" />
+      <path d="M3 12A9 9 0 0 1 18.5 5.8" />
+      <path d="M18 2v4h4" />
+      <path d="M6 22v-4H2" />
     </svg>
   )
 }
@@ -143,9 +164,10 @@ function CreateReferenceModelRow() {
   const modelMenuRef = useRef<HTMLDivElement>(null)
   const referenceFileInputRef = useRef<HTMLInputElement>(null)
   const activeProfile = getActiveApiProfile(settings)
-  const firstImage = inputImages[0]
+  const visibleReferenceImages = inputImages.slice(0, 4)
   const referenceLimitReached = inputImages.length >= 4
   const activeModel = getCreateModelOption(activeProfile.model)
+  const activeModelMeta = CREATE_MODEL_META[activeModel]
 
   const handleReferenceFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(event.currentTarget.files ?? [])
@@ -190,22 +212,24 @@ function CreateReferenceModelRow() {
     <section className="create-reference-model-row" data-no-drag-select>
       <article className="create-reference-card">
         <h2>参考图</h2>
-        <div className={`create-reference-body${firstImage ? '' : ' is-empty'}`}>
-          {firstImage && (
-            <div className="create-reference-image">
-              <img src={firstImage.dataUrl} alt="" />
-              <button type="button" onClick={() => removeInputImage(0)} aria-label="删除参考图">×</button>
+        <div className={`create-reference-body${visibleReferenceImages.length ? ' has-images' : ' is-empty'}`}>
+          {visibleReferenceImages.map((image, index) => (
+            <div className="create-reference-image" key={image.id}>
+              <img src={image.dataUrl} alt="" />
+              <button type="button" onClick={() => removeInputImage(index)} aria-label={`删除参考图 ${index + 1}`}>×</button>
             </div>
+          ))}
+          {!referenceLimitReached && (
+            <button
+              type="button"
+              className="create-reference-empty"
+              onClick={() => referenceFileInputRef.current?.click()}
+              disabled={uploadingReference}
+            >
+              <strong>＋ 添加参考图</strong>
+              <span>{uploadingReference ? '正在添加...' : '支持 JPG / PNG，最多 4 张'}</span>
+            </button>
           )}
-          <button
-            type="button"
-            className="create-reference-empty"
-            onClick={() => !referenceLimitReached && referenceFileInputRef.current?.click()}
-            disabled={referenceLimitReached || uploadingReference}
-          >
-            <strong>{referenceLimitReached ? '参考图已满' : '＋ 添加参考图'}</strong>
-            <span>{uploadingReference ? '正在添加...' : '支持 JPG / PNG，最多 4 张'}</span>
-          </button>
           <input
             ref={referenceFileInputRef}
             type="file"
@@ -226,14 +250,13 @@ function CreateReferenceModelRow() {
             aria-expanded={modelMenuOpen}
             onClick={() => setModelMenuOpen((open) => !open)}
           >
-            <img src="/auth-portal-pro.png" alt="" />
-            <div>
+            <CreateModelIcon model={activeModel} />
+            <div className="create-model-select-copy">
               <strong>
                 {activeModel}
-                <em>推荐</em>
-                <em>高质量</em>
+                {activeModelMeta.badges.map((badge) => <em key={badge}>{badge}</em>)}
               </strong>
-              <span>{activeProfile.name || '默认模型'} · 兼容当前接口配置</span>
+              <span>{activeModelMeta.summary}</span>
             </div>
             <svg className="create-model-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
               <path d="m6 9 6 6 6-6" />
@@ -241,27 +264,33 @@ function CreateReferenceModelRow() {
           </button>
           {modelMenuOpen && (
             <div className="create-model-dropdown-menu" role="listbox" aria-label="模型">
-              {CREATE_MODEL_OPTIONS.map((model) => (
-                <button
-                  key={model}
-                  type="button"
-                  role="option"
-                  aria-selected={activeModel === model}
-                  className={activeModel === model ? 'is-active' : ''}
-                  onClick={() => {
-                    setSettings({ model: model === 'image-2' ? 'gpt-image-2' : model })
-                    setModelMenuOpen(false)
-                  }}
-                >
-                  <span>{model}</span>
-                  <em>{model === 'image-2' ? '默认推荐' : model === 'image-1.5' ? '平衡质量' : '兼容模式'}</em>
-                  {activeModel === model && (
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="m5 12 4 4 10-10" />
-                    </svg>
-                  )}
-                </button>
-              ))}
+              {CREATE_MODEL_OPTIONS.map((model) => {
+                const meta = CREATE_MODEL_META[model]
+                return (
+                  <button
+                    key={model}
+                    type="button"
+                    role="option"
+                    aria-selected={activeModel === model}
+                    className={activeModel === model ? 'is-active' : ''}
+                    onClick={() => {
+                      setSettings({ model: getCreateModelRequestId(model) })
+                      setModelMenuOpen(false)
+                    }}
+                  >
+                    <CreateModelIcon model={model} />
+                    <div className="create-model-menu-copy">
+                      <span>{model}</span>
+                      <em>{meta.menuLabel}</em>
+                    </div>
+                    {activeModel === model && (
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="m5 12 4 4 10-10" />
+                      </svg>
+                    )}
+                  </button>
+                )
+              })}
             </div>
           )}
         </div>
@@ -271,15 +300,37 @@ function CreateReferenceModelRow() {
 }
 
 function CreateResultsPanel() {
+  const showToast = useStore((state) => state.showToast)
+  const [refreshing, setRefreshing] = useState(false)
+
+  const handleRefresh = async () => {
+    if (refreshing) return
+    setRefreshing(true)
+    try {
+      await syncServerHistory()
+      showToast('生成结果已刷新', 'success')
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '生成结果刷新失败', 'error')
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
   return (
     <section className="create-results-panel">
       <div className="create-section-header" data-no-drag-select>
         <h2>生成结果</h2>
-        <div className="create-section-tools" aria-hidden="true">
-          <span><CreateSectionIcon type="grid" /></span>
-          <span><CreateSectionIcon type="rerun" /></span>
-          <span><CreateSectionIcon type="download" /></span>
-          <span><CreateSectionIcon type="delete" /></span>
+        <div className="create-section-tools">
+          <button
+            type="button"
+            className={refreshing ? 'is-refreshing' : ''}
+            onClick={() => void handleRefresh()}
+            disabled={refreshing}
+            aria-label="刷新生成结果"
+            title="刷新生成结果"
+          >
+            <CreateSectionIcon />
+          </button>
         </div>
       </div>
       <TaskGrid />

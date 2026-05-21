@@ -15,16 +15,179 @@ import SizePickerModal from './SizePickerModal'
 import ViewportTooltip from './ViewportTooltip'
 
 
+function parseCssPixelValue(value: string): number | null {
+  const parsed = Number.parseFloat(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function isPromptTrailingBreakPlaceholder(node: Node): node is HTMLElement {
+  return node instanceof HTMLElement && node.dataset.promptTrailingBreak === 'true'
+}
+
+function removePromptTrailingBreakPlaceholders(el: HTMLElement) {
+  el.querySelectorAll('[data-prompt-trailing-break="true"]').forEach((node) => node.remove())
+}
+
+function reconcilePromptTrailingBreakPlaceholder(el: HTMLElement) {
+  removePromptTrailingBreakPlaceholders(el)
+  const lastChild = el.lastChild
+  if (lastChild instanceof HTMLBRElement) {
+    const placeholder = document.createElement('span')
+    placeholder.dataset.promptTrailingBreak = 'true'
+    placeholder.setAttribute('contenteditable', 'false')
+    placeholder.setAttribute('aria-hidden', 'true')
+    placeholder.textContent = '\u200b'
+    el.appendChild(placeholder)
+  }
+}
+
+function scrollContentEditableCursorIntoView(el: HTMLElement) {
+  const sel = window.getSelection()
+  if (!sel || sel.rangeCount === 0) return
+
+  const range = sel.getRangeAt(0)
+  if (!el.contains(range.commonAncestorContainer)) return
+
+  let rect = range.getClientRects()[0] ?? range.getBoundingClientRect()
+
+  if (rect.width === 0 && rect.height === 0) {
+    const markerRange = range.cloneRange()
+    const marker = document.createElement('span')
+    marker.textContent = '\u200b'
+    marker.style.cssText = 'display:inline-block;width:0;height:1em;overflow:hidden;line-height:inherit;'
+    markerRange.insertNode(marker)
+    rect = marker.getBoundingClientRect()
+
+    const restoreRange = document.createRange()
+    restoreRange.setStartAfter(marker)
+    restoreRange.collapse(true)
+    marker.remove()
+    sel.removeAllRanges()
+    sel.addRange(restoreRange)
+  }
+
+  const elRect = el.getBoundingClientRect()
+  const style = window.getComputedStyle(el)
+  const lineHeight = parseCssPixelValue(style.lineHeight) ?? parseCssPixelValue(style.fontSize) ?? 18
+  const inset = Math.max(4, lineHeight * 0.35)
+
+  if (rect.bottom > elRect.bottom - inset) {
+    el.scrollTop += rect.bottom - elRect.bottom + lineHeight
+  } else if (rect.top < elRect.top + inset) {
+    el.scrollTop -= elRect.top - rect.top + lineHeight
+  }
+}
+
 function getMentionTagTextLength(el: Element) {
   return el.textContent?.length ?? 0
 }
 
 function getNodeVisibleTextLength(node: Node): number {
   if (node.nodeType === Node.TEXT_NODE) return node.textContent?.length ?? 0
+  if (isPromptTrailingBreakPlaceholder(node)) return 0
+  if (node instanceof HTMLBRElement) return 1
   if (node instanceof HTMLElement && node.classList.contains('mention-tag')) {
     return getMentionTagTextLength(node)
   }
   return Array.from(node.childNodes).reduce((sum, child) => sum + getNodeVisibleTextLength(child), 0)
+}
+
+function getNodeIndex(node: Node) {
+  return node.parentNode ? Array.from<Node>(node.parentNode.childNodes).indexOf(node) : -1
+}
+
+function getElementBoundaryPosition(element: Element, edge: 'before' | 'after') {
+  const parent = element.parentNode
+  if (!parent) return null
+  const index = getNodeIndex(element)
+  if (index < 0) return null
+  return { node: parent, offset: edge === 'before' ? index : index + 1 }
+}
+
+function findContentEditableCursorPosition(root: HTMLElement, offset: number) {
+  let remaining = offset
+
+  const walk = (node: Node): { node: Node; offset: number } | null => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const length = node.textContent?.length ?? 0
+      if (remaining <= length) return { node, offset: remaining }
+      remaining -= length
+      return null
+    }
+
+    if (isPromptTrailingBreakPlaceholder(node)) {
+      return null
+    }
+
+    if (node instanceof HTMLBRElement) {
+      if (remaining <= 1) return getElementBoundaryPosition(node, 'after')
+      remaining -= 1
+      return null
+    }
+
+    if (node instanceof HTMLElement && node.classList.contains('mention-tag')) {
+      const length = getMentionTagTextLength(node)
+      if (remaining <= length) {
+        return getElementBoundaryPosition(node, remaining < length / 2 ? 'before' : 'after')
+      }
+      remaining -= length
+      return null
+    }
+
+    for (const child of Array.from(node.childNodes)) {
+      const result = walk(child)
+      if (result) return result
+    }
+    return null
+  }
+
+  return walk(root)
+}
+
+function escapePromptHtml(text: string) {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+function renderPromptTextHtml(text: string, includeTrailingBreakPlaceholder = text.endsWith('\n')) {
+  const trailingBreakPlaceholder = '<span contenteditable="false" aria-hidden="true" data-prompt-trailing-break="true">\u200b</span>'
+  return `${text.split('\n').map(escapePromptHtml).join('<br>')}${includeTrailingBreakPlaceholder ? trailingBreakPlaceholder : ''}`
+}
+
+function createPromptTextFragment(text: string): { fragment: DocumentFragment; lastNode: Node | null } {
+  const fragment = document.createDocumentFragment()
+  const parts = text.replace(/\r\n?/g, '\n').split('\n')
+  let lastNode: Node | null = null
+
+  parts.forEach((part, index) => {
+    if (part) {
+      lastNode = document.createTextNode(part)
+      fragment.appendChild(lastNode)
+    }
+    if (index < parts.length - 1) {
+      lastNode = document.createElement('br')
+      fragment.appendChild(lastNode)
+    }
+  })
+
+  return { fragment, lastNode }
+}
+
+function normalizeContentEditableTextLineBreaks(el: HTMLElement) {
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+  const textNodes: Text[] = []
+
+  while (walker.nextNode()) {
+    const node = walker.currentNode as Text
+    if (node.parentElement?.closest('.mention-tag')) continue
+    if (/[\r\n]/.test(node.textContent ?? '')) textNodes.push(node)
+  }
+
+  textNodes.forEach((node) => {
+    const { fragment } = createPromptTextFragment(node.textContent ?? '')
+    node.replaceWith(fragment)
+  })
+
+  return textNodes.length > 0
 }
 
 function getVisibleOffsetBeforeNode(root: HTMLElement, target: Node): number {
@@ -35,6 +198,9 @@ function getVisibleOffsetBeforeNode(root: HTMLElement, target: Node): number {
     if (found) return
     if (node === target) {
       found = true
+      return
+    }
+    if (isPromptTrailingBreakPlaceholder(node)) {
       return
     }
     if (node.nodeType === Node.TEXT_NODE) {
@@ -165,6 +331,13 @@ function getContentEditablePlainText(el: HTMLElement): string {
       text += node.textContent ?? ''
       return
     }
+    if (isPromptTrailingBreakPlaceholder(node)) {
+      return
+    }
+    if (node instanceof HTMLBRElement) {
+      text += '\n'
+      return
+    }
     if (node instanceof HTMLElement && node.classList.contains('mention-tag')) {
       text += node.dataset.mentionText ?? node.textContent ?? ''
       return
@@ -204,46 +377,22 @@ function syncMentionTagSelection(el: HTMLElement) {
 function setContentEditableCursor(el: HTMLElement, offset: number) {
   const sel = window.getSelection()
   if (!sel) return
-  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
-  let remaining = offset
-  let node: Text | null = null
-  while (walker.nextNode()) {
-    node = walker.currentNode as Text
-    const mentionTag = node.parentElement?.closest('.mention-tag')
-    if (mentionTag) {
-      if (remaining <= node.length) {
-        const range = document.createRange()
-        if (remaining < node.length / 2) {
-          range.setStartBefore(mentionTag)
-        } else {
-          range.setStartAfter(mentionTag)
-        }
-        range.collapse(true)
-        sel.removeAllRanges()
-        sel.addRange(range)
-        return
-      }
-      remaining -= node.length
-      continue
-    }
-    if (remaining <= node.length) {
-      const range = document.createRange()
-      range.setStart(node, remaining)
-      range.collapse(true)
-      sel.removeAllRanges()
-      sel.addRange(range)
-      return
-    }
-    remaining -= node.length
-  }
-  // 如果偏移超出，放到末尾
-  if (node) {
+
+  const position = findContentEditableCursorPosition(el, offset)
+  if (position) {
     const range = document.createRange()
-    range.setStart(node, node.length)
+    range.setStart(position.node, position.offset)
     range.collapse(true)
     sel.removeAllRanges()
     sel.addRange(range)
+    return
   }
+
+  const range = document.createRange()
+  range.selectNodeContents(el)
+  range.collapse(false)
+  sel.removeAllRanges()
+  sel.addRange(range)
 }
 
 /** 通用悬浮气泡提示 */
@@ -435,6 +584,8 @@ export default function InputBar({ variant = 'floating' }: InputBarProps = {}) {
   const imageDragPreviewRef = useRef<HTMLElement | null>(null)
   const suppressImageClickRef = useRef(false)
   const isUserInputRef = useRef(false)
+  const shouldScrollPromptCursorRef = useRef(false)
+  const handledPromptEnterKeyDownRef = useRef(false)
   const imageHintLockedRef = useRef(false)
   const imageHintReleaseRef = useRef<(() => void) | null>(null)
   const [cursorPos, setCursorPos] = useState(0)
@@ -526,19 +677,76 @@ export default function InputBar({ variant = 'floating' }: InputBarProps = {}) {
 
   const insertPromptTextAtSelection = useCallback((text: string) => {
     const el = textareaRef.current
-    const selection = el ? getContentEditableSelection(el) : { start: prompt.length, end: prompt.length }
-    const promptStart = getPromptIndexFromVisibleIndex(prompt, selection.start)
-    const promptEnd = getPromptIndexFromVisibleIndex(prompt, selection.end)
-    const nextPrompt = `${prompt.slice(0, promptStart)}${text}${prompt.slice(promptEnd)}`
-    const nextCursor = selection.start + text.length
-    setPrompt(nextPrompt)
-    window.setTimeout(() => {
-      if (textareaRef.current) {
-        textareaRef.current.focus()
-        setContentEditableCursor(textareaRef.current, nextCursor)
+    if (!el) {
+      const nextPrompt = `${prompt}${text}`
+      setPrompt(nextPrompt)
+      return
+    }
+
+    el.focus()
+    const sel = window.getSelection()
+    const range = sel?.rangeCount ? sel.getRangeAt(0) : document.createRange()
+
+    if (!sel?.rangeCount || !el.contains(range.commonAncestorContainer)) {
+      range.selectNodeContents(el)
+      range.collapse(false)
+    }
+
+    removePromptTrailingBreakPlaceholders(el)
+    range.deleteContents()
+    const { fragment, lastNode } = createPromptTextFragment(text)
+    if (lastNode) {
+      range.insertNode(fragment)
+      const insertedLastNode: Node = lastNode
+      if (insertedLastNode.nodeType === Node.TEXT_NODE) {
+        range.setStart(insertedLastNode, insertedLastNode.textContent?.length ?? 0)
+      } else {
+        range.setStartAfter(insertedLastNode)
       }
-    }, 0)
+      range.collapse(true)
+    }
+    reconcilePromptTrailingBreakPlaceholder(el)
+    sel?.removeAllRanges()
+    sel?.addRange(range)
+
+    isUserInputRef.current = true
+    shouldScrollPromptCursorRef.current = true
+    const nextPrompt = getContentEditablePlainText(el)
+    const nextCursor = getContentEditableSelection(el).start
+    setCursorPos(nextCursor)
+    syncMentionTagSelection(el)
+    setPrompt(nextPrompt)
+    setAtImageMenuIndex(0)
+    setAtImageMenuDismissed(false)
   }, [prompt, setPrompt])
+
+  const markPromptEnterKeyDownHandled = () => {
+    handledPromptEnterKeyDownRef.current = true
+    window.setTimeout(() => {
+      handledPromptEnterKeyDownRef.current = false
+    }, 0)
+  }
+
+  const handlePromptBeforeInput = (e: React.FormEvent<HTMLDivElement>) => {
+    const nativeEvent = e.nativeEvent as InputEvent
+    if (nativeEvent.inputType !== 'insertParagraph' && nativeEvent.inputType !== 'insertLineBreak') return
+
+    if (handledPromptEnterKeyDownRef.current) {
+      e.preventDefault()
+      handledPromptEnterKeyDownRef.current = false
+      return
+    }
+
+    e.preventDefault()
+    const isModifier = 'ctrlKey' in nativeEvent && Boolean((nativeEvent as unknown as KeyboardEvent).ctrlKey || (nativeEvent as unknown as KeyboardEvent).metaKey)
+
+    if (settings.enterSubmit && !isModifier) {
+      if (canSubmit) submitTask()
+      return
+    }
+
+    insertPromptTextAtSelection('\n')
+  }
 
   useEffect(() => {
     setOutputCompressionInput(
@@ -870,7 +1078,10 @@ export default function InputBar({ variant = 'floating' }: InputBarProps = {}) {
 
     // 阻止 contentEditable 默认换行
     if (e.key === 'Enter') {
+      if (e.nativeEvent.isComposing || e.keyCode === 229) return
+
       e.preventDefault()
+      markPromptEnterKeyDownHandled()
 
       const isModifier = e.ctrlKey || e.metaKey
 
@@ -994,8 +1205,20 @@ export default function InputBar({ variant = 'floating' }: InputBarProps = {}) {
     const imagesHeight = imagesRef.current?.offsetHeight ?? 0
     const fixedOverhead = imagesHeight + 140
 
-    // textarea 最大高度 = 页面 40% 减去固定开销，至少保留 80px
-    const maxH = Math.max(window.innerHeight * 0.4 - fixedOverhead, 80)
+    // textarea 最大高度 = 页面 40% 减去固定开销，同时不能超过外层编辑框的可视高度
+    const viewportMaxH = Math.max(window.innerHeight * 0.4 - fixedOverhead, 80)
+    const editor = el.closest<HTMLElement>('.create-prompt-editor')
+    const editorStyle = editor ? window.getComputedStyle(editor) : null
+    const editorMaxHeight = editorStyle ? parseCssPixelValue(editorStyle.maxHeight) : null
+    const editorContentMaxH = editorStyle && editorMaxHeight
+      ? Math.max(
+          42,
+          editorMaxHeight
+            - (parseCssPixelValue(editorStyle.paddingTop) ?? 0)
+            - (parseCssPixelValue(editorStyle.paddingBottom) ?? 0),
+        )
+      : null
+    const maxH = editorContentMaxH ? Math.min(viewportMaxH, editorContentMaxH) : viewportMaxH
 
     // 1. 关闭过渡动画，设高度为 0 以获取真实的文本内容高度
     el.style.transition = 'none'
@@ -1012,6 +1235,7 @@ export default function InputBar({ variant = 'floating' }: InputBarProps = {}) {
 
     // 3. 恢复平滑过渡，并设置目标高度
     el.style.transition = 'height 150ms ease, border-color 200ms, box-shadow 200ms'
+    el.style.maxHeight = maxH + 'px'
     el.style.height = targetH + 'px'
     el.style.overflowY = desired > maxH ? 'auto' : 'hidden'
 
@@ -1029,10 +1253,10 @@ export default function InputBar({ variant = 'floating' }: InputBarProps = {}) {
     }
     const parts = getPromptMentionParts(prompt, inputImages)
     const html = prompt
-      ? parts.map((part) =>
+      ? parts.map((part, index) =>
           part.type === 'mention'
             ? `<span contenteditable="false" class="mention-tag" data-mention-text="${getSelectedImageMentionLabel(part.imageIndex)}">${part.text}</span>`
-            : part.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            : renderPromptTextHtml(part.text, prompt.endsWith('\n') && index === parts.length - 1)
         ).join('')
       : ''
     if (el.innerHTML !== html) {
@@ -1042,6 +1266,12 @@ export default function InputBar({ variant = 'floating' }: InputBarProps = {}) {
 
   useEffect(() => {
     adjustTextareaHeight()
+    if (shouldScrollPromptCursorRef.current) {
+      shouldScrollPromptCursorRef.current = false
+      window.requestAnimationFrame(() => {
+        if (textareaRef.current) scrollContentEditableCursorIntoView(textareaRef.current)
+      })
+    }
   }, [prompt, inputImages, adjustTextareaHeight])
 
   // 监听 selectionchange 以在光标移动时更新位置（contentEditable 的 onSelect 不可靠）
@@ -1676,6 +1906,13 @@ export default function InputBar({ variant = 'floating' }: InputBarProps = {}) {
                 onInput={(e) => {
                   isUserInputRef.current = true
                   const el = e.currentTarget
+                  const selectionBeforeNormalize = getContentEditableSelection(el)
+                  const normalizedLineBreaks = normalizeContentEditableTextLineBreaks(el)
+                  reconcilePromptTrailingBreakPlaceholder(el)
+                  if (normalizedLineBreaks) {
+                    setContentEditableCursor(el, selectionBeforeNormalize.start)
+                    shouldScrollPromptCursorRef.current = true
+                  }
                   const range = getContentEditableSelection(el)
                   setCursorPos(range.start)
                   syncMentionTagSelection(el)
@@ -1693,6 +1930,7 @@ export default function InputBar({ variant = 'floating' }: InputBarProps = {}) {
                   setAtImageMenuDismissed(false)
                 }}
                 onKeyDown={handleKeyDown}
+                onBeforeInput={handlePromptBeforeInput}
                 onPaste={handlePromptPaste}
                 onCopy={handlePromptCopy}
                 onClick={(e) => {
@@ -1943,6 +2181,13 @@ export default function InputBar({ variant = 'floating' }: InputBarProps = {}) {
               onInput={(e) => {
                 isUserInputRef.current = true
                 const el = e.currentTarget
+                const selectionBeforeNormalize = getContentEditableSelection(el)
+                const normalizedLineBreaks = normalizeContentEditableTextLineBreaks(el)
+                reconcilePromptTrailingBreakPlaceholder(el)
+                if (normalizedLineBreaks) {
+                  setContentEditableCursor(el, selectionBeforeNormalize.start)
+                  shouldScrollPromptCursorRef.current = true
+                }
                 const range = getContentEditableSelection(el)
                 setCursorPos(range.start)
                 syncMentionTagSelection(el)
@@ -1960,6 +2205,7 @@ export default function InputBar({ variant = 'floating' }: InputBarProps = {}) {
                 setAtImageMenuDismissed(false)
               }}
               onKeyDown={handleKeyDown}
+              onBeforeInput={handlePromptBeforeInput}
               onPaste={handlePromptPaste}
               onCopy={handlePromptCopy}
               onClick={(e) => {

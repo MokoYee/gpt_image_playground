@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useStore } from '../store'
 import { getActiveApiProfile } from '../lib/apiProfiles'
+import { getOutputImageLimitForSettings } from '../lib/paramCompatibility'
+import { normalizeImageSize } from '../lib/size'
+import { DEFAULT_PARAMS } from '../types'
 import type { AppUser } from '../lib/auth'
+import Select from './Select'
+import SizePickerModal from './SizePickerModal'
 import ThemeToggle from './ThemeToggle'
 
 interface CreateShellProps {
@@ -167,36 +172,6 @@ function CreateSidebar({ appName, user, onLogout, onOpenAccount, onOpenConsole }
   )
 }
 
-function RatioButton({ label, value }: { label: string; value: string }) {
-  const params = useStore((state) => state.params)
-  const setParams = useStore((state) => state.setParams)
-  const active = params.size === value
-
-  return (
-    <button
-      type="button"
-      className={`create-ratio-button${active ? ' is-active' : ''}`}
-      onClick={() => setParams({ size: value })}
-    >
-      {label}
-    </button>
-  )
-}
-
-function NumberChoice({ value }: { value: number }) {
-  const params = useStore((state) => state.params)
-  const setParams = useStore((state) => state.setParams)
-  return (
-    <button
-      type="button"
-      className={`create-number-choice${params.n === value ? ' is-active' : ''}`}
-      onClick={() => setParams({ n: value })}
-    >
-      {value}
-    </button>
-  )
-}
-
 function CreateContactBlock() {
   return (
     <div className="create-contact-block">
@@ -237,48 +212,172 @@ function CreateSettingsPanel() {
   const params = useStore((state) => state.params)
   const setParams = useStore((state) => state.setParams)
   const settings = useStore((state) => state.settings)
+  const [showSizePicker, setShowSizePicker] = useState(false)
+  const [compressionInput, setCompressionInput] = useState(
+    params.output_compression == null ? '' : String(params.output_compression),
+  )
+  const [nInput, setNInput] = useState(String(params.n))
   const activeProfile = getActiveApiProfile(settings)
   const activeModel = ['image-1', 'image-1.5', 'image-2'].includes(activeProfile.model) ? activeProfile.model : 'image-2'
-  const isHigh = params.quality === 'high'
+  const outputImageLimit = getOutputImageLimitForSettings(settings)
+  const displaySize = normalizeImageSize(params.size) || DEFAULT_PARAMS.size
+  const compressionDisabled = params.output_format === 'png'
+  const moderationDisabled = activeProfile.apiMode === 'responses'
+
+  useEffect(() => {
+    setCompressionInput(params.output_compression == null ? '' : String(params.output_compression))
+  }, [params.output_compression])
+
+  useEffect(() => {
+    setNInput(String(params.n))
+  }, [params.n])
+
+  useEffect(() => {
+    if (params.quality !== DEFAULT_PARAMS.quality) {
+      setParams({ quality: DEFAULT_PARAMS.quality })
+    }
+  }, [params.quality, setParams])
+
+  const commitCompression = () => {
+    if (compressionDisabled) {
+      setCompressionInput('')
+      setParams({ output_compression: null })
+      return
+    }
+
+    const rawValue = compressionInput.trim()
+    if (!rawValue) {
+      setCompressionInput('')
+      setParams({ output_compression: null })
+      return
+    }
+
+    const parsedValue = Number(rawValue)
+    if (!Number.isFinite(parsedValue)) {
+      setCompressionInput(params.output_compression == null ? '' : String(params.output_compression))
+      return
+    }
+
+    const nextValue = Math.min(100, Math.max(0, Math.round(parsedValue)))
+    setCompressionInput(String(nextValue))
+    setParams({ output_compression: nextValue })
+  }
+
+  const commitQuantity = () => {
+    const parsedValue = Number(nInput)
+    const fallbackValue = Number.isFinite(parsedValue) ? parsedValue : params.n
+    const nextValue = Math.min(outputImageLimit, Math.max(1, Math.round(fallbackValue || DEFAULT_PARAMS.n)))
+    setNInput(String(nextValue))
+    setParams({ n: nextValue })
+  }
 
   return (
-    <aside className="create-settings-panel" data-no-drag-select>
-      <h2>参数设置</h2>
-      <div className="create-setting-group">
-        <span className="create-setting-label">画面比例</span>
-        <div className="create-ratio-grid">
-          <RatioButton label="1:1" value="1024x1024" />
-          <RatioButton label="14:9" value="1536x1024" />
-          <RatioButton label="9:16" value="1024x1536" />
-          <RatioButton label="4:3" value="1024x768" />
-          <RatioButton label="3:4" value="768x1024" />
+    <>
+      {showSizePicker && (
+        <SizePickerModal
+          currentSize={params.size}
+          onSelect={(size) => setParams({ size })}
+          onClose={() => setShowSizePicker(false)}
+          allowAuto
+        />
+      )}
+      <aside className="create-settings-panel" data-no-drag-select>
+        <h2>参数设置</h2>
+        <div className="create-setting-group">
+          <span className="create-setting-label">尺寸</span>
+          <button type="button" className="create-param-trigger" onClick={() => setShowSizePicker(true)}>
+            <span>{displaySize}</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="m9 18 6-6-6-6" />
+            </svg>
+          </button>
         </div>
-      </div>
-      <div className="create-setting-group">
-        <span className="create-setting-label">生成数量</span>
-        <div className="create-number-grid">
-          {[1, 2, 4, 8].map((value) => <NumberChoice key={value} value={value} />)}
+
+        <div className="create-setting-group">
+          <span className="create-setting-label">格式</span>
+          <Select
+            value={params.output_format}
+            onChange={(value) => {
+              const outputFormat = value as 'png' | 'jpeg' | 'webp'
+              setParams(outputFormat === 'png'
+                ? { output_format: outputFormat, output_compression: null }
+                : { output_format: outputFormat })
+            }}
+            options={[
+              { label: 'PNG', value: 'png' },
+              { label: 'JPEG', value: 'jpeg' },
+              { label: 'WebP', value: 'webp' },
+            ]}
+            className="create-param-select"
+          />
         </div>
-      </div>
-      <div className="create-setting-group">
-        <span className="create-setting-label">图像质量</span>
-        <div className="create-quality-toggle">
-          <button type="button" className={!isHigh ? 'is-active' : ''} onClick={() => setParams({ quality: 'auto' })}>标准</button>
-          <button type="button" className={isHigh ? 'is-active' : ''} onClick={() => setParams({ quality: 'high' })}>高质量</button>
+
+        <div className="create-setting-group">
+          <span className="create-setting-label">压缩率</span>
+          <input
+            value={compressionInput}
+            onChange={(event) => setCompressionInput(event.target.value)}
+            onBlur={commitCompression}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') event.currentTarget.blur()
+            }}
+            disabled={compressionDisabled}
+            type="number"
+            min={0}
+            max={100}
+            placeholder={compressionDisabled ? 'PNG 不适用' : '0-100'}
+            className="create-param-input"
+          />
+          <span className="create-param-hint">仅 JPEG / WebP 生效</span>
         </div>
-      </div>
-      <div className="create-model-card">
-        <span>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z" />
-            <path d="M12 12 4.5 7.8M12 12l7.5-4.2M12 12v8.4" />
-          </svg>
-          当前模型
-        </span>
-        <strong>{activeModel}</strong>
-      </div>
-      <CreateContactBlock />
-    </aside>
+
+        <div className="create-setting-group">
+          <span className="create-setting-label">审核</span>
+          <Select
+            value={moderationDisabled ? 'auto' : params.moderation}
+            onChange={(value) => {
+              if (!moderationDisabled) setParams({ moderation: value as 'auto' | 'low' })
+            }}
+            options={[
+              { label: 'auto', value: 'auto' },
+              { label: 'low', value: 'low' },
+            ]}
+            disabled={moderationDisabled}
+            className="create-param-select"
+          />
+          {moderationDisabled && <span className="create-param-hint">Responses API 固定为 auto</span>}
+        </div>
+
+        <div className="create-setting-group">
+          <span className="create-setting-label">生成数量</span>
+          <input
+            value={nInput}
+            onChange={(event) => setNInput(event.target.value)}
+            onBlur={commitQuantity}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') event.currentTarget.blur()
+            }}
+            type="number"
+            min={1}
+            max={outputImageLimit}
+            className="create-param-input"
+          />
+          <span className="create-param-hint">最多 {outputImageLimit} 张</span>
+        </div>
+
+        <div className="create-model-card">
+          <span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z" />
+              <path d="M12 12 4.5 7.8M12 12l7.5-4.2M12 12v8.4" />
+            </svg>
+            当前模型
+          </span>
+          <strong>{activeModel}</strong>
+        </div>
+        <CreateContactBlock />
+      </aside>
+    </>
   )
 }
 
