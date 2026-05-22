@@ -3,6 +3,7 @@ import Masonry from 'react-masonry-css'
 import type { TaskRecord } from '../types'
 import {
   ensureImageThumbnailCached,
+  isTaskVisibleToCurrentUser,
   removeTask,
   subscribeImageThumbnail,
   syncServerTaskList,
@@ -146,7 +147,7 @@ export default function FavoritePage() {
 
   const favoriteImages = useMemo(() => {
     return tasks
-      .filter((task) => task.isFavorite && task.status === 'done' && task.outputImages.length > 0)
+      .filter((task) => isTaskVisibleToCurrentUser(task) && task.isFavorite && task.status === 'done' && task.outputImages.length > 0)
       .sort((a, b) => b.createdAt - a.createdAt)
       .flatMap((task) => task.outputImages.map((imageId, imageIndex) => ({ task, imageId, imageIndex })))
   }, [tasks])

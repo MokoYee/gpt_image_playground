@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import Checkbox from 'antd/es/checkbox'
 import ConfigProvider from 'antd/es/config-provider'
 import DatePicker from 'antd/es/date-picker'
 import zhCN from 'antd/es/locale/zh_CN'
@@ -190,7 +191,9 @@ export default function HistoryPage({ onGoCreate }: HistoryPageProps) {
 
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
   const deletableItems = useMemo(() => items.filter(canDeleteTask), [items])
-  const allDeletableSelected = deletableItems.length > 0 && deletableItems.every((item) => selectedSet.has(item.id))
+  const selectedDeletableCount = deletableItems.reduce((count, item) => count + (selectedSet.has(item.id) ? 1 : 0), 0)
+  const allDeletableSelected = deletableItems.length > 0 && selectedDeletableCount === deletableItems.length
+  const partiallyDeletableSelected = selectedDeletableCount > 0 && selectedDeletableCount < deletableItems.length
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
   const loadTasks = async (showSpinner = true) => {
@@ -243,8 +246,8 @@ export default function HistoryPage({ onGoCreate }: HistoryPageProps) {
     setSelectedIds((prev) => checked ? Array.from(new Set([...prev, taskId])) : prev.filter((id) => id !== taskId))
   }
 
-  const toggleSelectPage = () => {
-    if (allDeletableSelected) {
+  const toggleSelectPage = (checked: boolean) => {
+    if (!checked) {
       const pageIds = new Set(deletableItems.map((item) => item.id))
       setSelectedIds((prev) => prev.filter((id) => !pageIds.has(id)))
       return
@@ -371,7 +374,13 @@ export default function HistoryPage({ onGoCreate }: HistoryPageProps) {
           <thead>
             <tr>
               <th className="is-checkbox">
-                <input type="checkbox" checked={allDeletableSelected} disabled={!deletableItems.length} onChange={toggleSelectPage} aria-label="选择当前页可删除记录" />
+                <Checkbox
+                  checked={allDeletableSelected}
+                  indeterminate={partiallyDeletableSelected}
+                  disabled={!deletableItems.length}
+                  onChange={(event) => toggleSelectPage(event.target.checked)}
+                  aria-label="选择当前页可删除记录"
+                />
               </th>
               <th>图片</th>
               <th>提示词</th>
@@ -391,8 +400,7 @@ export default function HistoryPage({ onGoCreate }: HistoryPageProps) {
               return (
                 <tr key={task.id}>
                   <td className="is-checkbox">
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={selectedSet.has(task.id)}
                       disabled={!canDeleteTask(task)}
                       onChange={(event) => toggleSelect(task.id, event.target.checked)}

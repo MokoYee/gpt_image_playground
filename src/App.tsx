@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import { initStore, resetAuthenticatedDraft, syncServerHistory, useStore } from './store'
+import { initStore, resetAuthenticatedDraft, scopeTasksToAuthenticatedUser, syncServerHistory, useStore } from './store'
 import { buildSettingsFromUrlParams, clearUrlSettingParams, hasUrlSettingParams } from './lib/urlSettings'
 import { useDockerApiUrlMigrationNotice } from './hooks/useDockerApiUrlMigrationNotice'
 import DetailModal from './components/DetailModal'
@@ -131,6 +131,7 @@ export default function App() {
     void fetchCurrentUser().then((user) => {
       setAuthSession(user)
       if (user) {
+        scopeTasksToAuthenticatedUser(user.id)
         void syncServerHistory().catch((error) => {
           useStore.getState().showToast(error instanceof Error ? error.message : '历史记录同步失败', 'error')
         })
@@ -149,6 +150,7 @@ export default function App() {
 
   const handleAuthenticated = (user: AppUser) => {
     setAuthSession(user)
+    scopeTasksToAuthenticatedUser(user.id)
     resetAuthenticatedDraft()
     void syncServerHistory()
     navigate(location.pathname === '/' ? '/create' : location.pathname, { replace: true })

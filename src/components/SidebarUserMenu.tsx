@@ -71,8 +71,11 @@ export default function SidebarUserMenu({ user, actions = [], className = '', on
       {menuOpen && (
         <div className="create-user-menu" role="menu">
           <div className="create-user-menu-credits" role="presentation">
-            <span>Credits</span>
-            <strong>{Number.isFinite(user.credits) ? user.credits.toFixed(0) : '-'}</strong>
+            <span className="create-user-menu-credits-label">可用余额</span>
+            <span className="create-user-menu-credits-value">
+              <strong>{Number.isFinite(user.credits) ? user.credits.toFixed(0) : '-'}</strong>
+              <small>Credits</small>
+            </span>
           </div>
           {actions.map((action) => (
             <button key={action.label} type="button" onClick={() => runMenuAction(action.onClick)}>
