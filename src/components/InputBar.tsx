@@ -13,6 +13,7 @@ import { getAuthToken } from '../lib/auth'
 import Select from './Select'
 import SizePickerModal from './SizePickerModal'
 import ViewportTooltip from './ViewportTooltip'
+import PromptAssistantModal from './PromptAssistantModal'
 
 
 function parseCssPixelValue(value: string): number | null {
@@ -568,6 +569,7 @@ export default function InputBar({ variant = 'floating' }: InputBarProps = {}) {
   const [imageHintId, setImageHintId] = useState<string | null>(null)
   const [mobileCollapsed, setMobileCollapsed] = useState(false)
   const [showSizePicker, setShowSizePicker] = useState(false)
+  const [showPromptAssistant, setShowPromptAssistant] = useState(false)
   const [maskPreviewUrl, setMaskPreviewUrl] = useState('')
   const [imageDragIndex, setImageDragIndex] = useState<number | null>(null)
   const [imageDragOverIndex, setImageDragOverIndex] = useState<number | null>(null)
@@ -717,6 +719,26 @@ export default function InputBar({ variant = 'floating' }: InputBarProps = {}) {
     setAtImageMenuIndex(0)
     setAtImageMenuDismissed(false)
   }, [prompt, setPrompt])
+
+  const replacePromptFromAssistant = useCallback((nextPrompt: string) => {
+    isUserInputRef.current = false
+    setPrompt(nextPrompt)
+    setCursorPos(nextPrompt.length)
+    setShowPromptAssistant(false)
+    showToast('已填入提示词', 'success')
+    window.setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus()
+        setContentEditableCursor(textareaRef.current, nextPrompt.length)
+      }
+    }, 0)
+  }, [setPrompt, showToast])
+
+  const appendPromptFromAssistant = useCallback((nextPrompt: string) => {
+    const prefix = prompt.trim() ? '\n' : ''
+    insertPromptTextAtSelection(`${prefix}${nextPrompt}`)
+    showToast('已追加提示词', 'success')
+  }, [insertPromptTextAtSelection, prompt, showToast])
 
   const markPromptEnterKeyDownHandled = () => {
     handledPromptEnterKeyDownRef.current = true
@@ -1866,6 +1888,13 @@ export default function InputBar({ variant = 'floating' }: InputBarProps = {}) {
           />
         )}
 
+        <PromptAssistantModal
+          open={showPromptAssistant}
+          onClose={() => setShowPromptAssistant(false)}
+          onAppend={appendPromptFromAssistant}
+          onReplace={replacePromptFromAssistant}
+        />
+
         <div data-input-bar className="image-pro-inputbar create-inputbar">
           <div ref={cardRef} className="image-pro-composer create-prompt-panel">
             <div className="create-prompt-editor">
@@ -1954,21 +1983,12 @@ export default function InputBar({ variant = 'floating' }: InputBarProps = {}) {
             </div>
             <div className="create-prompt-actions">
               <div className="create-helper-buttons">
-                <button type="button">
+                <button type="button" onClick={() => setShowPromptAssistant(true)}>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M12 3l1.7 4.9L19 9.6l-5.3 1.7L12 16l-1.7-4.7L5 9.6l5.3-1.7L12 3Z" />
                     <path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15Z" />
                   </svg>
                   提示词助手
-                </button>
-                <button type="button">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M4 7h16" />
-                    <path d="M7 12h10" />
-                    <path d="M10 17h4" />
-                    <path d="M19 5 5 19" />
-                  </svg>
-                  反向提示词
                 </button>
               </div>
               <div className="create-generate-actions">
