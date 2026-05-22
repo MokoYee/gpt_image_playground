@@ -2648,6 +2648,27 @@ body::before {
   box-shadow: 0 20px 46px rgba(79, 29, 255, 0.34) !important;
 }
 
+.auth-login-form button[type="submit"]:disabled {
+  cursor: not-allowed !important;
+  opacity: 0.84 !important;
+  transform: none !important;
+}
+
+.auth-submit-spinner {
+  display: block;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  border: 2px solid rgba(255, 255, 255, 0.78);
+  border-right-color: transparent;
+  border-radius: 999px;
+  animation: history-button-spin 0.72s linear infinite;
+}
+
+.auth-login-form.auth-register-form .auth-login-copy {
+  margin-bottom: 38px;
+}
+
 .auth-login-register {
   margin-top: 22px !important;
   justify-content: flex-start !important;
@@ -2886,6 +2907,10 @@ body::before {
     line-height: 1.5;
   }
 
+  .auth-login-form.auth-register-form .auth-login-copy {
+    margin-bottom: 14px;
+  }
+
   .auth-login-form label + label {
     margin-top: 8px !important;
   }
@@ -2946,6 +2971,14 @@ body::before {
 
   .auth-login-copy p {
     margin-top: 6px;
+  }
+
+  .auth-login-form.auth-register-form .auth-login-copy {
+    margin-bottom: 10px;
+  }
+
+  .auth-login-form.auth-register-form .auth-login-copy h1 {
+    font-size: 22px;
   }
 
   .auth-login-form input,
