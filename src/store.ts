@@ -36,7 +36,7 @@ import { getCustomQueuedImageResult } from './lib/openaiCompatibleImageApi'
 import { validateMaskMatchesImage } from './lib/canvasImage'
 import { orderInputImagesForMask } from './lib/mask'
 import { getChangedParams, normalizeParamsForSettings } from './lib/paramCompatibility'
-import { fetchCurrentUser, readAuthSession } from './lib/auth'
+import { fetchCurrentUser, readAuthSession, type AppUser } from './lib/auth'
 import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate'
 
 // ===== Image cache =====
@@ -58,6 +58,40 @@ const customRecoveryTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const openAIWatchdogTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const serverTaskPollTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const OPENAI_INTERRUPTED_ERROR = '请求中断'
+
+function isTaskOwnedByUser(task: TaskRecord, userId: string) {
+  return task.ownerUserId === userId
+}
+
+function filterTasksForUser(tasks: TaskRecord[], user: Pick<AppUser, 'id'> | null) {
+  if (!user) return tasks
+  return tasks.filter((task) => isTaskOwnedByUser(task, user.id))
+}
+
+export function isTaskVisibleToCurrentUser(task: TaskRecord): boolean {
+  const sessionUser = readAuthSession()?.user ?? null
+  if (!sessionUser) return true
+  return isTaskOwnedByUser(task, sessionUser.id)
+}
+
+export function scopeTasksToAuthenticatedUser(userId = readAuthSession()?.user.id ?? null) {
+  if (!userId) return
+
+  const state = useStore.getState()
+  const scopedTasks = state.tasks.filter((task) => isTaskOwnedByUser(task, userId))
+  if (scopedTasks.length === state.tasks.length) return
+
+  const scopedTaskIds = new Set(scopedTasks.map((task) => task.id))
+  state.setTasks(scopedTasks)
+  useStore.setState({
+    selectedTaskIds: state.selectedTaskIds.filter((id) => scopedTaskIds.has(id)),
+    detailTaskId: state.detailTaskId && scopedTaskIds.has(state.detailTaskId) ? state.detailTaskId : null,
+    lightboxImageId: null,
+    lightboxImageList: [],
+  })
+  imageCache.clear()
+  thumbnailCache.clear()
+}
 
 function createOpenAITimeoutError(timeoutSeconds: number) {
   return `请求超时：超过 ${timeoutSeconds} 秒仍未完成，请稍后重试或提高超时时间。`
@@ -271,6 +305,7 @@ async function pollServerTask(taskId: string) {
 export async function syncServerTaskList(params: ImageTaskListParams = {}) {
   const sessionUser = readAuthSession()?.user
   if (!sessionUser) return []
+  scopeTasksToAuthenticatedUser(sessionUser.id)
   const serverTasks = await readMyImageTasks(params)
   for (const serverTask of serverTasks.reverse()) {
     await upsertServerTask(serverTask)
@@ -304,6 +339,10 @@ export async function toggleTaskFavorite(task: TaskRecord) {
   const nextFavorite = !task.isFavorite
   const { showToast } = useStore.getState()
   try {
+    if (!isTaskVisibleToCurrentUser(task)) {
+      showToast('只能操作当前账号的收藏记录', 'error')
+      return
+    }
     if (task.serverTaskId && readAuthSession()) {
       await favoriteImageTask(task.serverTaskId, nextFavorite)
     }
@@ -325,7 +364,7 @@ export async function setServerTaskFavoriteState(serverTaskId: string, favorite:
 export async function setMultipleTasksFavorite(taskIds: string[], favorite: boolean) {
   const { tasks, showToast } = useStore.getState()
   const uniqueTaskIds = Array.from(new Set(taskIds))
-  const targets = tasks.filter((task) => uniqueTaskIds.includes(task.id))
+  const targets = tasks.filter((task) => uniqueTaskIds.includes(task.id) && isTaskVisibleToCurrentUser(task))
   if (!targets.length) return
 
   const serverTaskIds = targets
@@ -1190,10 +1229,12 @@ async function resolveImageSizeParamsList(
 /** 初始化：从 IndexedDB 加载任务，按需恢复输入图片，并清理孤立图片 */
 export async function initStore() {
   const storedTasks = await getAllTasks()
-  const { tasks, interruptedTasks } = markInterruptedOpenAIRunningTasks(storedTasks)
+  const sessionUser = readAuthSession()?.user ?? null
+  const storedTasksForCurrentUser = filterTasksForUser(storedTasks, sessionUser)
+  const { tasks, interruptedTasks } = markInterruptedOpenAIRunningTasks(storedTasksForCurrentUser)
   await Promise.all(interruptedTasks.map((task) => putTask(task)))
   useStore.getState().setTasks(tasks)
-  const hasAuthSession = Boolean(readAuthSession())
+  const hasAuthSession = Boolean(sessionUser)
   if (hasAuthSession) {
     resetAuthenticatedDraft()
     void syncServerHistory().catch((error) => {
@@ -1217,7 +1258,7 @@ export async function initStore() {
   const referencedIds = new Set<string>()
   const persistedInputImages = hasAuthSession ? [] : useStore.getState().inputImages
   for (const img of persistedInputImages) referencedIds.add(img.id)
-  for (const t of tasks) {
+  for (const t of storedTasks) {
     for (const id of t.inputImageIds || []) referencedIds.add(id)
     if (t.maskImageId) referencedIds.add(t.maskImageId)
     for (const id of t.outputImages || []) {

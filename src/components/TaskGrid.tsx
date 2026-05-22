@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, useEffect } from 'react'
-import { useStore, reuseConfig, editOutputs, removeTask } from '../store'
+import { useStore, reuseConfig, editOutputs, isTaskVisibleToCurrentUser, removeTask } from '../store'
 import TaskCard from './TaskCard'
 import { readAuthSession } from '../lib/auth'
 
@@ -40,10 +40,7 @@ export default function TaskGrid() {
     
     return sorted.filter((t) => {
       if (t.status !== 'done' || t.outputImages.length === 0) return false
-      if (currentUser) {
-        const canSeeTask = t.ownerUserId === currentUser.id || (!t.ownerUserId && currentUser.role === 'admin')
-        if (!canSeeTask) return false
-      }
+      if (!isTaskVisibleToCurrentUser(t)) return false
       if (filterFavorite && !t.isFavorite) return false
       const matchStatus = filterStatus === 'all' || t.status === filterStatus
       if (!matchStatus) return false
@@ -53,7 +50,7 @@ export default function TaskGrid() {
       const paramStr = JSON.stringify(t.params).toLowerCase()
       return prompt.includes(q) || paramStr.includes(q)
     })
-  }, [tasks, searchQuery, filterStatus, filterFavorite, currentUser?.id, currentUser?.role])
+  }, [tasks, searchQuery, filterStatus, filterFavorite, currentUser?.id])
 
   const handleDelete = (task: typeof tasks[0]) => {
     setConfirmDialog({

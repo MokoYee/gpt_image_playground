@@ -265,7 +265,7 @@ function StatIcon({ type }: { type: 'users' | 'enabled' | 'credits' | 'today' })
 
 function Stat({ label, value, trend, icon }: { label: string; value: string | number; trend?: string; icon: 'users' | 'enabled' | 'credits' | 'today' }) {
   return (
-    <div className="console-stat-card">
+    <div className={`console-stat-card is-${icon}`}>
       <div className="console-stat-heading">
         <span><StatIcon type={icon} /></span>
         <em>{label}</em>
