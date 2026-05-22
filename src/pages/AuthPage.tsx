@@ -52,13 +52,20 @@ function FieldError({ message }: { message?: string | null }) {
 }
 
 const inputClassName =
-  'h-10 w-full rounded-lg border border-white/[0.11] bg-white/[0.06] pl-10 pr-10 text-[12px] text-slate-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] outline-none transition placeholder:text-slate-400/80 hover:bg-white/[0.08] focus:border-blue-400/70 focus:bg-white/[0.09] focus:ring-2 focus:ring-blue-500/25'
+  'h-10 w-full rounded-lg border border-white/[0.11] bg-white/[0.06] pl-10 pr-10 text-[12px] text-slate-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] outline-none transition placeholder:text-slate-400/80 hover:bg-white/[0.08] focus:border-blue-400/70 focus:bg-white/[0.09] focus:ring-2 focus:ring-blue-500/25 disabled:cursor-not-allowed disabled:opacity-70'
 
-function ArrowRightIcon() {
+const submitButtonClassName =
+  'mt-1 flex h-[39px] w-full items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-[12px] font-semibold text-white shadow-sm outline-none transition hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-blue-500/30 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-85 disabled:active:scale-100'
+
+function ButtonSpinner() {
+  return <span className="auth-submit-spinner" aria-hidden="true" />
+}
+
+function UserIcon() {
   return (
-    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M5 12h14" />
-      <path d="m13 6 6 6-6 6" />
+    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M20 21a8 8 0 0 0-16 0" />
+      <circle cx="12" cy="7" r="4" />
     </svg>
   )
 }
@@ -101,30 +108,6 @@ function EyeIcon() {
   )
 }
 
-function ModeButton({
-  active,
-  children,
-  onClick,
-}: {
-  active: boolean
-  children: string
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`h-9 flex-1 rounded-lg px-3 text-sm font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-blue-500/30 ${
-        active
-          ? 'bg-blue-500 text-white shadow-sm ring-1 ring-blue-300/30'
-          : 'text-slate-400 hover:bg-white/[0.06] hover:text-slate-100'
-      }`}
-    >
-      {children}
-    </button>
-  )
-}
-
 export default function AuthPage({ appName, onAppNameChange, onAuthenticated }: AuthPageProps) {
   const [mode, setMode] = useState<AuthMode>('login')
   const [loginId, setLoginId] = useState('')
@@ -133,7 +116,9 @@ export default function AuthPage({ appName, onAppNameChange, onAuthenticated }: 
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [passwordVisible, setPasswordVisible] = useState(false)
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false)
   const [errors, setErrors] = useState<Record<string, string | null>>({})
   const [submitting, setSubmitting] = useState(false)
   const [registrationOpen, setRegistrationOpen] = useState<boolean | null>(null)
@@ -153,7 +138,7 @@ export default function AuthPage({ appName, onAppNameChange, onAuthenticated }: 
   }, [onAppNameChange])
 
   const switchMode = (nextMode: AuthMode) => {
-    if (nextMode === 'register' && !registrationOpen) {
+    if (nextMode === 'register' && registrationOpen === false) {
       setMode('login')
       setErrors({})
       showToast('当前未开放公开注册，请联系管理员创建账号', 'info')
@@ -165,6 +150,7 @@ export default function AuthPage({ appName, onAppNameChange, onAuthenticated }: 
 
   const handleLogin = async (event: FormEvent) => {
     event.preventDefault()
+    if (submitting) return
     const nextErrors = {
       loginId: validateLoginIdentifier(loginId),
       loginPassword: validatePassword(loginPassword),
@@ -172,19 +158,23 @@ export default function AuthPage({ appName, onAppNameChange, onAuthenticated }: 
     setErrors(nextErrors)
     if (nextErrors.loginId || nextErrors.loginPassword) return
 
-    setSubmitting(true)
-    const result = await authenticateUser(loginId, loginPassword)
-    setSubmitting(false)
-    if (!result.user) {
-      setErrors({ loginPassword: result.error ?? '账号或密码不正确' })
-      return
-    }
+    try {
+      setSubmitting(true)
+      const result = await authenticateUser(loginId, loginPassword)
+      if (!result.user) {
+        setErrors({ loginPassword: result.error ?? '账号或密码不正确' })
+        return
+      }
 
-    onAuthenticated(result.user)
+      onAuthenticated(result.user)
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const handleRegister = async (event: FormEvent) => {
     event.preventDefault()
+    if (submitting) return
     if (!registrationOpen) {
       showToast('当前未开放公开注册，请联系管理员创建账号', 'info')
       return
@@ -198,18 +188,21 @@ export default function AuthPage({ appName, onAppNameChange, onAuthenticated }: 
     setErrors(nextErrors)
     if (Object.values(nextErrors).some(Boolean)) return
 
-    setSubmitting(true)
-    const result = await registerUser({
-      username: username.trim(),
-      email: email.trim(),
-      password,
-    })
-    setSubmitting(false)
-    if (!result.user) {
-      setErrors({ email: result.error })
-      return
+    try {
+      setSubmitting(true)
+      const result = await registerUser({
+        username: username.trim(),
+        email: email.trim(),
+        password,
+      })
+      if (!result.user) {
+        setErrors({ email: result.error })
+        return
+      }
+      onAuthenticated(result.user)
+    } finally {
+      setSubmitting(false)
     }
-    onAuthenticated(result.user)
   }
 
   const handleForgotPassword = () => {
@@ -234,162 +227,203 @@ export default function AuthPage({ appName, onAppNameChange, onAuthenticated }: 
           </header>
 
           {mode === 'login' && (
-            <>
-              <form onSubmit={handleLogin} noValidate className="auth-login-form relative z-20">
-                <div className="auth-login-form-brand">
-                  <AppLogoMark variant="wordmark" theme={resolvedTheme} alt={appName} className="auth-login-wordmark" />
-                </div>
-                <div className="auth-login-copy">
-                  <h1>
-                    欢迎回来<br />开启你的创意之旅
-                  </h1>
-                  <p>登录账户以使用 AI 图像生成服务</p>
-                </div>
-                <label className="relative block">
-                    <span className="sr-only">用户名或邮箱</span>
-                    <span className="pointer-events-none absolute left-3 top-3 text-slate-400"><MailIcon /></span>
-                    <input
-                      value={loginId}
-                      onChange={(event) => setLoginId(event.target.value)}
-                      autoComplete="username"
-                      placeholder="请输入用户名或邮箱"
-                      className={inputClassName}
-                    />
-                    <FieldError message={errors.loginId} />
-                  </label>
+            <form onSubmit={handleLogin} noValidate className="auth-login-form relative z-20" aria-busy={submitting}>
+              <div className="auth-login-form-brand">
+                <AppLogoMark variant="wordmark" theme={resolvedTheme} alt={appName} className="auth-login-wordmark" />
+              </div>
+              <div className="auth-login-copy">
+                <h1>
+                  欢迎回来<br />开启你的创意之旅
+                </h1>
+                <p>登录账户以使用 AI 图像生成服务</p>
+              </div>
+              <label className="relative block">
+                <span className="sr-only">用户名或邮箱</span>
+                <span className="pointer-events-none absolute left-3 top-3 text-slate-400"><UserIcon /></span>
+                <input
+                  value={loginId}
+                  onChange={(event) => setLoginId(event.target.value)}
+                  autoComplete="username"
+                  placeholder="请输入用户名或邮箱"
+                  className={inputClassName}
+                  disabled={submitting}
+                />
+                <FieldError message={errors.loginId} />
+              </label>
 
-                  <label className="relative mt-1.5 block">
-                    <span className="sr-only">密码</span>
-                    <span className="pointer-events-none absolute left-3 top-3 text-slate-400"><LockIcon /></span>
-                    <input
-                      value={loginPassword}
-                      onChange={(event) => setLoginPassword(event.target.value)}
-                      type={loginPasswordVisible ? 'text' : 'password'}
-                      autoComplete="current-password"
-                      placeholder="请输入密码"
-                      className={inputClassName}
-                    />
-                    <button
-                      type="button"
-                      className="auth-password-toggle absolute right-3 top-3 text-slate-500 transition hover:text-slate-200"
-                      aria-label={loginPasswordVisible ? '隐藏密码' : '显示密码'}
-                      aria-pressed={loginPasswordVisible}
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => setLoginPasswordVisible((visible) => !visible)}
-                      tabIndex={-1}
-                    >
-                      {loginPasswordVisible ? <EyeIcon /> : <EyeOffIcon />}
-                    </button>
-                    <FieldError message={errors.loginPassword} />
-                  </label>
+              <label className="relative mt-1.5 block">
+                <span className="sr-only">密码</span>
+                <span className="pointer-events-none absolute left-3 top-3 text-slate-400"><LockIcon /></span>
+                <input
+                  value={loginPassword}
+                  onChange={(event) => setLoginPassword(event.target.value)}
+                  type={loginPasswordVisible ? 'text' : 'password'}
+                  autoComplete="current-password"
+                  placeholder="请输入密码"
+                  className={inputClassName}
+                  disabled={submitting}
+                />
+                <button
+                  type="button"
+                  className="auth-password-toggle absolute right-3 top-3 text-slate-500 transition hover:text-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label={loginPasswordVisible ? '隐藏密码' : '显示密码'}
+                  aria-pressed={loginPasswordVisible}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => setLoginPasswordVisible((visible) => !visible)}
+                  tabIndex={-1}
+                  disabled={submitting}
+                >
+                  {loginPasswordVisible ? <EyeIcon /> : <EyeOffIcon />}
+                </button>
+                <FieldError message={errors.loginPassword} />
+              </label>
 
+              <button
+                type="submit"
+                disabled={submitting}
+                className={submitButtonClassName}
+              >
+                {submitting && <ButtonSpinner />}
+                <span>{submitting ? '登录中...' : '登录'}</span>
+              </button>
+
+              <div className="auth-login-register mt-7 flex justify-center text-[12px] text-slate-400">
+                <span>
+                  还没有账户？
                   <button
-                    type="submit"
-                    disabled={submitting}
-                    className="mt-1 flex h-[39px] w-full items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-[12px] font-semibold text-white shadow-sm outline-none transition hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-blue-500/30 active:scale-[0.99]"
+                    type="button"
+                    onClick={() => switchMode('register')}
+                    className="ml-1 rounded-md font-medium text-blue-400 outline-none transition hover:text-blue-300 focus-visible:ring-2 focus-visible:ring-blue-500/30 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={submitting || registrationOpen === null}
                   >
-                    <span>{submitting ? '登录中' : '登录'}</span>
+                    立即注册
                   </button>
-
-                  <div className="auth-login-register mt-7 flex justify-center text-[12px] text-slate-400">
-                    <span>
-                      还没有账户？
-                    <button
-                      type="button"
-                        onClick={() => switchMode('register')}
-                        className="ml-1 rounded-md font-medium text-blue-400 outline-none transition hover:text-blue-300 focus-visible:ring-2 focus-visible:ring-blue-500/30"
-                    >
-                        立即注册
-                    </button>
-                    </span>
-                  </div>
-                </form>
-            </>
+                </span>
+              </div>
+            </form>
           )}
 
-              {mode === 'register' && (
-            <div className="auth-register-panel relative z-20 flex h-[680px] flex-col justify-center px-8">
-              <div className="mb-4">
-                <p className="text-xs font-semibold text-blue-300">创建账号</p>
-                <h1 className="mt-1.5 text-[24px] font-semibold leading-tight tracking-tight text-slate-50">注册账号</h1>
-                <p className="mt-2 text-[12px] leading-5 text-slate-400">请填写账号信息完成注册。</p>
+          {mode === 'register' && (
+            <form onSubmit={handleRegister} noValidate className="auth-login-form auth-register-form relative z-20" aria-busy={submitting}>
+              <div className="auth-login-form-brand">
+                <AppLogoMark variant="wordmark" theme={resolvedTheme} alt={appName} className="auth-login-wordmark" />
               </div>
-              {registrationOpen && (
-                <div className="mb-4 flex rounded-xl bg-white/[0.055] p-1">
-                  <ModeButton active={false} onClick={() => switchMode('login')}>
-                    登录
-                  </ModeButton>
-                  <ModeButton active onClick={() => switchMode('register')}>
-                    注册
-                  </ModeButton>
-                </div>
-              )}
-              <form onSubmit={handleRegister} noValidate className="grid gap-2.5">
-                  <label className="block">
-                    <span className="mb-1.5 block text-sm text-slate-300">用户名</span>
-                    <input
-                      value={username}
-                      onChange={(event) => setUsername(event.target.value)}
-                      autoComplete="username"
-                      placeholder="请输入用户名"
-                      className={inputClassName}
-                    />
-                    <FieldError message={errors.username} />
-                  </label>
+              <div className="auth-login-copy">
+                <h1>
+                  创建账号<br />加入创意之旅
+                </h1>
+                <p>填写账号信息后即可开始生成图像</p>
+              </div>
+              <label className="relative block">
+                <span className="sr-only">用户名</span>
+                <span className="pointer-events-none absolute left-3 top-3 text-slate-400"><UserIcon /></span>
+                <input
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  autoComplete="username"
+                  placeholder="请输入用户名"
+                  className={inputClassName}
+                  disabled={submitting}
+                />
+                <FieldError message={errors.username} />
+              </label>
 
-                  <label className="block">
-                    <span className="mb-1.5 block text-sm text-slate-300">邮箱地址</span>
-                    <input
-                      value={email}
-                      onChange={(event) => {
-                        setEmail(event.target.value)
-                        if (errors.email) setErrors((current) => ({ ...current, email: validateEmail(event.target.value) }))
-                      }}
-                      onBlur={() => setErrors((current) => ({ ...current, email: validateEmail(email) }))}
-                      type="email"
-                      autoComplete="email"
-                      placeholder="请输入邮箱地址"
-                      className={inputClassName}
-                    />
-                    <FieldError message={errors.email} />
-                  </label>
+              <label className="relative block">
+                <span className="sr-only">邮箱地址</span>
+                <span className="pointer-events-none absolute left-3 top-3 text-slate-400"><MailIcon /></span>
+                <input
+                  value={email}
+                  onChange={(event) => {
+                    setEmail(event.target.value)
+                    if (errors.email) setErrors((current) => ({ ...current, email: validateEmail(event.target.value) }))
+                  }}
+                  onBlur={() => setErrors((current) => ({ ...current, email: validateEmail(email) }))}
+                  type="email"
+                  autoComplete="email"
+                  placeholder="请输入邮箱地址"
+                  className={inputClassName}
+                  disabled={submitting}
+                />
+                <FieldError message={errors.email} />
+              </label>
 
-                  <label className="block">
-                    <span className="mb-1.5 block text-sm text-slate-300">密码</span>
-                    <input
-                      value={password}
-                      onChange={(event) => setPassword(event.target.value)}
-                      type="password"
-                      autoComplete="new-password"
-                      placeholder="请输入密码"
-                      className={inputClassName}
-                    />
-                    <FieldError message={errors.password} />
-                  </label>
+              <label className="relative block">
+                <span className="sr-only">密码</span>
+                <span className="pointer-events-none absolute left-3 top-3 text-slate-400"><LockIcon /></span>
+                <input
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  type={passwordVisible ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  placeholder="请输入密码"
+                  className={inputClassName}
+                  disabled={submitting}
+                />
+                <button
+                  type="button"
+                  className="auth-password-toggle absolute right-3 top-3 text-slate-500 transition hover:text-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label={passwordVisible ? '隐藏密码' : '显示密码'}
+                  aria-pressed={passwordVisible}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => setPasswordVisible((visible) => !visible)}
+                  tabIndex={-1}
+                  disabled={submitting}
+                >
+                  {passwordVisible ? <EyeIcon /> : <EyeOffIcon />}
+                </button>
+                <FieldError message={errors.password} />
+              </label>
 
-                  <label className="block">
-                    <span className="mb-1.5 block text-sm text-slate-300">确认密码</span>
-                    <input
-                      value={confirmPassword}
-                      onChange={(event) => setConfirmPassword(event.target.value)}
-                      type="password"
-                      autoComplete="new-password"
-                      placeholder="请再次输入密码"
-                      className={inputClassName}
-                    />
-                    <FieldError message={errors.confirmPassword} />
-                  </label>
+              <label className="relative block">
+                <span className="sr-only">确认密码</span>
+                <span className="pointer-events-none absolute left-3 top-3 text-slate-400"><LockIcon /></span>
+                <input
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  type={confirmPasswordVisible ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  placeholder="请再次输入密码"
+                  className={inputClassName}
+                  disabled={submitting}
+                />
+                <button
+                  type="button"
+                  className="auth-password-toggle absolute right-3 top-3 text-slate-500 transition hover:text-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label={confirmPasswordVisible ? '隐藏密码' : '显示密码'}
+                  aria-pressed={confirmPasswordVisible}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => setConfirmPasswordVisible((visible) => !visible)}
+                  tabIndex={-1}
+                  disabled={submitting}
+                >
+                  {confirmPasswordVisible ? <EyeIcon /> : <EyeOffIcon />}
+                </button>
+                <FieldError message={errors.confirmPassword} />
+              </label>
 
+              <button
+                type="submit"
+                disabled={submitting}
+                className={submitButtonClassName}
+              >
+                {submitting && <ButtonSpinner />}
+                <span>{submitting ? '注册中...' : '注册'}</span>
+              </button>
+
+              <div className="auth-login-register mt-7 flex justify-center text-[12px] text-slate-400">
+                <span>
+                  已有账户？
                   <button
-                    type="submit"
+                    type="button"
+                    onClick={() => switchMode('login')}
+                    className="ml-1 rounded-md font-medium text-blue-400 outline-none transition hover:text-blue-300 focus-visible:ring-2 focus-visible:ring-blue-500/30 disabled:cursor-not-allowed disabled:opacity-60"
                     disabled={submitting}
-                    className="mt-1 flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm outline-none transition hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-blue-500/30 active:scale-[0.99]"
                   >
-                    <span>{submitting ? '注册中' : '注册'}</span>
-                    <ArrowRightIcon />
+                    立即登录
                   </button>
-                </form>
-            </div>
+                </span>
+              </div>
+            </form>
           )}
 
         </section>
