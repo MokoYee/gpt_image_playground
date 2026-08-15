@@ -10,7 +10,6 @@ import ConfirmDialog from './components/ConfirmDialog'
 import Toast from './components/Toast'
 import MaskEditorModal from './components/MaskEditorModal'
 import ImageContextMenu from './components/ImageContextMenu'
-import SupportPromptModal from './components/SupportPromptModal'
 import CreateShell from './components/CreateShell'
 import type { CreateNavKey } from './components/CreateShell'
 import AuthPage from './pages/AuthPage'
@@ -75,7 +74,6 @@ function CreateRouteFrame({
       <Lightbox />
       <SettingsModal />
       <ConfirmDialog />
-      <SupportPromptModal />
       <Toast />
       <MaskEditorModal />
       <ImageContextMenu />
