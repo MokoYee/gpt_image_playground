@@ -150,9 +150,9 @@
 </details>
 
 <details>
-<summary><strong>☁️ 方式二：Cloudflare Pages 部署</strong></summary>
+<summary><strong>☁️ 方式二：Cloudflare Workers 部署</strong></summary>
 
-项目已内置 Wrangler 配置，可将 Vite 构建产物直接部署到 Cloudflare Pages。
+项目已内置 Wrangler 配置，可将 Vite 构建产物作为 Cloudflare Workers 静态资源部署。
 
 **1. 登录 Cloudflare**
 
@@ -166,9 +166,9 @@ npx wrangler login
 npm run deploy:cf
 ```
 
-部署脚本会先执行 `npm run build`，再通过 `wrangler pages deploy` 将 `dist/` 上传到 `gpt-image-playground` Pages 项目，生产分支为 `cloudflare-pages`。
+部署脚本会先执行 `npm run build`，再通过 `wrangler deploy` 上传 `dist/` 目录。
 
-**配置默认 API URL**：Cloudflare Pages 的运行时环境变量不会自动改写已经构建好的静态文件。若需预设默认 API 地址，请在构建前设置 `VITE_DEFAULT_API_URL` 后再部署。
+**配置默认 API URL**：Cloudflare Workers 的环境变量不会自动改写已经构建好的静态文件。若需预设默认 API 地址，请在构建前设置 `VITE_DEFAULT_API_URL` 后再部署。
 
 ```bash
 VITE_DEFAULT_API_URL=https://api.openai.com/v1 npm run deploy:cf

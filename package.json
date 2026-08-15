@@ -7,7 +7,7 @@
     "dev": "vite",
     "mock:api": "node scripts/mock-image-api.mjs",
     "build": "tsc -b && vite build",
-    "deploy:cf": "npm run build && wrangler pages deploy ./dist --project-name gpt-image-playground --branch cloudflare-pages",
+    "deploy:cf": "npm run build && wrangler deploy",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest"
