@@ -484,8 +484,6 @@ DEFAULT_API_URL=https://example.com/gpt-image-config.json
 
 本项目基于 [MIT License](LICENSE) 开源。
 
-特别致谢：[LINUX DO](https://linux.do)
-
 ## ⭐ Star History
 
 <div align="center">
