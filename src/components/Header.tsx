@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { useVersionCheck } from '../hooks/useVersionCheck'
 import { useTooltip } from '../hooks/useTooltip'
 import { dismissAllTooltips } from '../lib/tooltipDismiss'
 import ViewportTooltip from './ViewportTooltip'
@@ -45,7 +44,6 @@ function LogoutIcon() {
 }
 
 export default function Header({ appName, user, onLogout, onOpenConsole, onOpenAccount }: HeaderProps) {
-  const { hasUpdate, latestRelease, dismiss } = useVersionCheck()
   const [showHelp, setShowHelp] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const closeUserMenuTimer = useRef<number | null>(null)
@@ -84,16 +82,6 @@ export default function Header({ appName, user, onLogout, onOpenConsole, onOpenA
               <span className="text-[17px] sm:text-lg font-bold tracking-tight text-gray-800 dark:text-gray-100">
                 {appName}
               </span>
-              {hasUpdate && latestRelease && (
-                <button
-                  type="button"
-                  onClick={dismiss}
-                  className="absolute -right-1 -top-1 translate-x-full -translate-y-1/4 px-1 py-0.5 rounded-[4px] border border-red-500/30 text-[9px] font-black bg-red-500 text-white hover:bg-red-600 transition-all animate-fade-in leading-none shadow-sm"
-                  title={`新版本 ${latestRelease.tag}`}
-                >
-                  NEW
-                </button>
-              )}
             </h1>
           </div>
           <div className="flex items-center gap-1 shrink-0">
